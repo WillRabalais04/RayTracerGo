@@ -56,45 +56,68 @@ func (v *Vec3) ScaleAssign(t float32) {
 	v.Y *= t
 	v.Z *= t
 }
-func (v1 Vec3) Dot(v2 Vec3) float32 {
+func Dot(v1, v2 *Vec3) float32 {
 	return v1.X*v2.X + v1.Y*v2.Y + v1.Z*v2.Z
 }
-func (v1 Vec3) Cross(v2 Vec3) Vec3 { // check this
+func Cross(v1, v2 Vec3) Vec3 {
 	return Vec3{
 		X: (v1.Y*v2.Z - v1.Z*v2.Y),
 		Y: (v1.Z*v2.X - v1.X*v2.Z),
 		Z: (v1.X*v2.Y - v1.Y*v2.X)}
 }
-func (v *Vec3) MakeUnit() {
+func (v *Vec3) MakeUnitVec() {
 	v.ScaleAssign((1.0 / v.Length()))
 }
-func (v Vec3) GetUnit() Vec3 {
+func (v Vec3) GetUnitVec() Vec3 {
 	return v.Scale((1.0 / v.Length()))
 }
 func (v Vec3) Negate() Vec3 {
 	return Vec3{X: -v.X, Y: -v.Y, Z: -v.Z}
 }
-func (v Vec3) SquaredLength() float32 {
+func (v Vec3) LengthSquared() float32 {
 	return v.X*v.X + v.Y*v.Y + v.Z*v.Z
 }
 func (v Vec3) Length() float32 {
-	return float32(math.Sqrt(float64(v.SquaredLength())))
+	return float32(math.Sqrt(float64(v.LengthSquared())))
 }
 func RandomUnitVector() Vec3 {
 	for {
 		p := NewBoundedRandomVec(-1, 1)
-		lensq := p.SquaredLength()
+		lensq := p.LengthSquared()
 		if 1e-160 < lensq && lensq <= 1 {
 			return p.Scale(1.0 / float32(math.Sqrt(float64(lensq))))
 		}
 	}
 }
-func (Normal Vec3) RandomOnHemisphere() Vec3 {
+func (Normal *Vec3) RandomOnHemisphere() Vec3 {
 	OnUnitSphere := RandomUnitVector()
-	if OnUnitSphere.Dot(Normal) < 0.0 {
+	if Dot(&OnUnitSphere, Normal) < 0.0 {
 		OnUnitSphere.ScaleAssign(-1.0)
 	}
 	return OnUnitSphere
+}
+func RandomInUnitDisk() Vec3 {
+	for {
+		p := NewVec3(rand.Float32()*2-1, rand.Float32()*2-1, rand.Float32()*2-1)
+		if p.LengthSquared() < 1 {
+			return p
+		}
+	}
+}
+func (v *Vec3) NearZero() bool {
+	s := 1e-8
+	return (math.Abs(float64(v.X)) < s) && math.Abs(float64(v.Y)) < s && math.Abs(float64(v.Z)) < s
+}
+
+func Reflect(v, n *Vec3) Vec3 {
+	return v.Sub(n.Scale(2 * Dot(v, n)))
+}
+func Refract(uv, n *Vec3, etaiOverEtat float64) Vec3 {
+	negatedUV := uv.Negate()
+	cosTheta := min(Dot(&negatedUV, n), 1.0)
+	rOutPerp := (uv.Add(n.Scale(cosTheta))).Scale(float32(etaiOverEtat))
+	rOutParallel := n.Scale(float32(-math.Sqrt(math.Abs(float64(1.0 - rOutPerp.LengthSquared())))))
+	return rOutParallel.Add(rOutPerp)
 }
 func NewRandomVec() Vec3 {
 	return NewVec3(rand.Float32(), rand.Float32(), rand.Float32())
@@ -145,7 +168,10 @@ func (i *Interval) Clamp(x float64) float64 {
 func WriteColor(color Vec3) {
 
 	intensity := NewInterval(0.0, 0.999)
-	r, g, b := int(256*(intensity.Clamp(LinearToGamma(float64(color.X))))), int(256*(intensity.Clamp(LinearToGamma(float64(color.Y))))), int(256*(intensity.Clamp(LinearToGamma(float64(color.Z)))))
+
+	r := int(256 * intensity.Clamp(LinearToGamma(float64(color.X))))
+	g := int(256 * intensity.Clamp(LinearToGamma(float64(color.Y))))
+	b := int(256 * intensity.Clamp(LinearToGamma(float64(color.Z))))
 
 	file, err := os.OpenFile("out.ppm", os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
@@ -168,18 +194,24 @@ func (r Ray) PointAtParameter(t float32) Vec3 {
 func NewRay(o, d Vec3) Ray {
 	return Ray{Origin: o, Direction: d}
 }
-func (r Ray) Color(world Hittable, depth int) Vec3 {
+func (c *Camera) RayColor(r Ray, depth int, world Hittable) Vec3 {
 	if depth <= 0 {
 		return NewVec3(0.0, 0.0, 0.0)
 	}
 
 	var rec HitRecord
 	if world.Hit(r, NewInterval(0.001, math.MaxFloat64), &rec) {
-		direction := rec.Normal.Add(RandomUnitVector())
-		return (NewRay(rec.P, direction).Color(world, depth-1)).Scale(0.5)
+		var scattered Ray
+		var attenuation Vec3
+
+		if rec.MaterialPointer != nil && (*rec.MaterialPointer).Scatter(&r, &rec, &attenuation, &scattered) {
+			return attenuation.Mul(c.RayColor(scattered, depth-1, world))
+		}
+		return NewVec3(0, 0, 0)
 	}
+
 	// if not hit it renders the background color
-	unitDirection := r.Direction.GetUnit()
+	unitDirection := r.Direction.GetUnitVec()
 	t := 0.5 * (unitDirection.Y + 1.0)
 	// ((1-t) * <1,1,1>) + (t * <0.5,0.7,1>)
 	return (NewVec3(1.0, 1.0, 1.0).Scale(1.0 - t)).Add((NewVec3(0.5, 0.7, 1.0).Scale(t)))
@@ -193,9 +225,9 @@ type HitRecord struct {
 	MaterialPointer *Material
 }
 
-func (h *HitRecord) SetFaceNormal(r Ray, outwardNormal Vec3) {
-	FrontFace := r.Direction.Dot(outwardNormal) < 0
-	if FrontFace {
+func (h *HitRecord) SetFaceNormal(r *Ray, outwardNormal Vec3) {
+	h.FrontFace = Dot(&r.Direction, &outwardNormal) < 0
+	if h.FrontFace {
 		h.Normal = outwardNormal
 	} else {
 		h.Normal = outwardNormal.Negate()
@@ -234,16 +266,18 @@ func (hl *HittableList) Hit(r Ray, i Interval, rec *HitRecord) bool {
 type Sphere struct {
 	Center Vec3
 	Radius float32
+	Mat    Material
 }
 
-func NewSphere(c Vec3, r float32) Sphere {
-	return Sphere{Center: c, Radius: r}
+func NewSphere(c Vec3, r float32, mat Material) Sphere {
+	return Sphere{Center: c, Radius: max(0, r), Mat: mat}
 }
 
 func (s *Sphere) Hit(r Ray, i Interval, rec *HitRecord) bool {
 	oc := r.Origin.Sub(s.Center)
-	a, b, c := r.Direction.SquaredLength(), oc.Dot(r.Direction), oc.Dot(oc)-(s.Radius*s.Radius)
+	a, b, c := r.Direction.LengthSquared(), Dot(&oc, &r.Direction), oc.LengthSquared()-(s.Radius*s.Radius)
 	discriminant := b*b - a*c
+	rec.MaterialPointer = &s.Mat
 
 	if discriminant > 0 {
 		sqrtDiscriminant := float32(math.Sqrt(float64(discriminant)))
@@ -259,9 +293,8 @@ func (s *Sphere) Hit(r Ray, i Interval, rec *HitRecord) bool {
 			rec.T = hitT
 			rec.P = r.PointAtParameter(rec.T)
 			outwardNormal := rec.P.Sub(s.Center).Scale(1.0 / s.Radius)
-			rec.SetFaceNormal(r, outwardNormal)
+			rec.SetFaceNormal(&r, outwardNormal)
 			return true
-
 		}
 	}
 	return false
@@ -274,10 +307,21 @@ type Camera struct {
 	MaxDepth          int
 	AspectRatio       float64
 	PixelSamplesScale float64
+	VFov              float64
+	defocusAngle      float64
+	focusDistance     float64
 	Center            Vec3
 	PixelDeltaU       Vec3
 	PixelDeltaV       Vec3
 	Pixel00Loc        Vec3
+	lookFrom          Vec3
+	lookAt            Vec3
+	vup               Vec3
+	u                 Vec3
+	v                 Vec3
+	w                 Vec3
+	defocusDiskU      Vec3
+	defocusDiskV      Vec3
 }
 
 func NewCamera() Camera {
@@ -286,24 +330,55 @@ func NewCamera() Camera {
 		SamplesPerPixel: 10,
 		MaxDepth:        50,
 		AspectRatio:     1.0,
+		VFov:            90,
+		defocusAngle:    0,
+		focusDistance:   10,
+		lookFrom:        NewVec3(0.0, 0.0, 0.0),
+		lookAt:          NewVec3(0.0, 0.0, -1.0),
+		vup:             NewVec3(0.0, 1.0, 0.0),
 	}
+}
+
+func DegreesToRadians(degrees float64) float64 {
+	return degrees * math.Pi / 180
 }
 func (c *Camera) InitCamera() {
 	c.ImageHeight = max(int(float64(c.ImageWidth)/c.AspectRatio), 1)
-	c.Center = NewVec3(0.0, 0.0, 0.0)
+	c.Center = c.lookFrom
 	c.PixelSamplesScale = 1.0 / float64(c.SamplesPerPixel)
-	focalLength := 1.0
-	viewPortHeight := 2.0
+
+	theta := DegreesToRadians(c.VFov)
+	h := math.Tan(theta / 2)
+
+	viewPortHeight := 2.0 * h * float64(c.focusDistance)
 	viewPortWidth := viewPortHeight * (float64(c.ImageWidth) / float64(c.ImageHeight))
-	viewPortU, viewPortV := NewVec3(float32(viewPortWidth), 0.0, 0.0), NewVec3(0.0, -float32(viewPortHeight), 0.0)
+
+	c.w = (c.lookFrom.Sub(c.lookAt)).GetUnitVec()
+	c.u = (Cross(c.vup, c.w)).GetUnitVec()
+	c.v = Cross(c.w, c.u)
+
+	viewPortU := c.u.Scale(float32(viewPortWidth))
+	viewPortV := ((c.v).Negate()).Scale(float32(viewPortHeight))
+
 	c.PixelDeltaU, c.PixelDeltaV = viewPortU.Scale(1.0/float32(c.ImageWidth)), viewPortV.Scale(1.0/float32(c.ImageHeight))
-	viewPortUpperLeft := c.Center.Sub(NewVec3(0.0, 0.0, float32(focalLength))).Sub(viewPortU.Scale(0.5)).Sub(viewPortV.Scale(0.5)) // center - <0,0,focal length> - (viewportU / 2) - (viewportV / 2)
-	c.Pixel00Loc = viewPortUpperLeft.Add((c.PixelDeltaU.Add(c.PixelDeltaV)).Scale(0.5))                                            // viewPortUpperLeft + 0.5*(PixelDeltaU + PixelDeltaV)
+	viewPortUpperLeft := c.Center.Sub(c.w.Scale(float32(c.focusDistance))).Sub(viewPortU.Scale(0.5)).Sub(viewPortV.Scale(0.5)) // center - <0,0,focal length> - (viewportU / 2) - (viewportV / 2)
+	c.Pixel00Loc = viewPortUpperLeft.Add((c.PixelDeltaU.Add(c.PixelDeltaV)).Scale(0.5))
+	// viewPortUpperLeft + 0.5*(PixelDeltaU + PixelDeltaV)
+	defocusRadius := c.focusDistance * math.Tan(DegreesToRadians(c.defocusAngle/2))
+	c.defocusDiskU = c.u.Scale(float32(defocusRadius))
+	c.defocusDiskV = c.v.Scale(float32(defocusRadius))
+
 }
 func (c *Camera) GetRay(i, j float32) Ray {
 	offset := NewBoundedRandomVec(-0.5, 0.5)
 	pixelSample := c.Pixel00Loc.Add(c.PixelDeltaU.Scale(i + offset.X).Add(c.PixelDeltaV.Scale(j + offset.Y)))
-	rayOrigin := c.Center
+
+	var rayOrigin Vec3
+	if c.defocusAngle <= 0 {
+		rayOrigin = c.Center
+	} else {
+		rayOrigin = c.defocusDiskSample()
+	}
 	rayDirection := pixelSample.Sub(rayOrigin)
 	return NewRay(rayOrigin, rayDirection)
 }
@@ -317,7 +392,7 @@ func (c *Camera) Render(world Hittable) {
 			pixelColor := NewVec3(0.0, 0.0, 0.0)
 			for sample := 0; sample < c.SamplesPerPixel; sample++ {
 				r := c.GetRay(float32(j), float32(i))
-				pixelColor.PlusEq(r.Color(world, c.MaxDepth))
+				pixelColor.PlusEq(c.RayColor(r, c.MaxDepth, world))
 			}
 			WriteColor(pixelColor.Scale(float32(c.PixelSamplesScale)))
 		}
@@ -329,6 +404,11 @@ func (c *Camera) Render(world Hittable) {
 	}
 }
 
+func (c *Camera) defocusDiskSample() Vec3 {
+	p := RandomInUnitDisk()
+	return c.Center.Add(c.defocusDiskU.Scale(p.X).Add(c.defocusDiskV.Scale(p.Y)))
+}
+
 func LinearToGamma(linearComponent float64) float64 {
 	if linearComponent > 0 {
 		return math.Sqrt(linearComponent)
@@ -337,11 +417,75 @@ func LinearToGamma(linearComponent float64) float64 {
 }
 
 type Material interface {
-	Scatter(r *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool
+	Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool
 }
 
 type Lambertian struct {
 	Albedo Vec3
+}
+
+func NewLambertian(albedo Vec3) Lambertian {
+	return Lambertian{Albedo: albedo}
+}
+func (l *Lambertian) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool {
+	scatterDirection := rec.Normal.Add(RandomUnitVector())
+	if scatterDirection.NearZero() {
+		scatterDirection = rec.Normal
+	}
+	*scattered = NewRay(rec.P, scatterDirection)
+	*attenuation = l.Albedo
+	return true
+}
+
+type Metal struct {
+	Albedo Vec3
+	Fuzz   float64
+}
+
+func NewMetal(albedo Vec3, fuzz float64) Metal {
+	return Metal{Albedo: albedo, Fuzz: min(1, fuzz)}
+}
+func (m *Metal) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool {
+	reflected := Reflect(&rIn.Direction, &rec.Normal)
+	reflected = reflected.GetUnitVec().Add(RandomUnitVector().Scale(float32(m.Fuzz)))
+	*scattered = NewRay(rec.P, reflected)
+	*attenuation = m.Albedo
+	return Dot(&scattered.Direction, &rec.Normal) > 0
+}
+
+type Dielectric struct {
+	RefractionIndex float64
+}
+
+func NewDielectric(ri float64) Dielectric {
+	return Dielectric{RefractionIndex: ri}
+}
+func (d *Dielectric) Reflectance(cosine, refractionIndex float64) float64 {
+	r0 := math.Pow(((1 - refractionIndex) / (1 + refractionIndex)), 2)
+	return r0 + (1-r0)*math.Pow((1-cosine), 5)
+}
+func (d *Dielectric) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool {
+	*attenuation = NewVec3(1.0, 1.0, 1.0)
+	ri := d.RefractionIndex
+	if rec.FrontFace {
+		ri = (1.0 / ri)
+	}
+
+	unitDirection := rIn.Direction.GetUnitVec()
+	negatedUnitDirection := unitDirection.Negate()
+	cosTheta := min(Dot(&negatedUnitDirection, &rec.Normal), 1.0)
+	sinTheta := math.Sqrt(1.0 - float64(cosTheta*cosTheta))
+	cannotRefract := ri*sinTheta > 1.0
+	var direction Vec3
+
+	if cannotRefract || d.Reflectance(float64(cosTheta), ri) > float64(rand.Float32()) {
+		direction = Reflect(&unitDirection, &rec.Normal)
+	} else {
+		direction = Refract(&unitDirection, &rec.Normal, ri)
+	}
+	*scattered = NewRay(rec.P, direction)
+
+	return true
 }
 
 func initImage(w, h int) {
@@ -355,13 +499,86 @@ func initImage(w, h int) {
 
 func main() {
 
-	s1, s2 := NewSphere(NewVec3(0.0, 0.0, -1.0), 0.5), NewSphere(NewVec3(0.0, -100.5, -1.0), 100)
-	world := NewHittableList(&s1, &s2)
+	// materialGround := NewLambertian(NewVec3(0.8, 0.8, 0.0))
+	// materialCenter := NewLambertian(NewVec3(0.1, 0.2, 0.5))
+	// materialLeft := NewDielectric(1.50)
+	// materialBubble := NewDielectric(1.0 / 1.50)
+	// materialRight := NewMetal(NewVec3(0.8, 0.6, 0.2), 1.0)
+
+	// s1 := NewSphere(NewVec3(0.0, -100.5, -1.0), 100, &materialGround)
+	// s2 := NewSphere(NewVec3(0.0, 0.0, -1.2), 0.5, &materialCenter)
+	// s3 := NewSphere(NewVec3(-1.0, 0.0, -1.0), 0.5, &materialLeft)
+	// s4 := NewSphere(NewVec3(-1.0, 0.0, -1.0), 0.4, &materialBubble)
+	// s5 := NewSphere(NewVec3(1.0, 0.0, -1.0), 0.5, &materialRight)
+
+	// world := NewHittableList(&s1, &s2, &s3, &s4, &s5)
+
+	// R := float32(math.Cos(math.Pi / 4))
+	// materialLeft := NewLambertian(NewVec3(0.0, 0.0, 1.0))
+	// materialRight := NewLambertian(NewVec3(1.0, 0.0, 0.0))
+
+	// s1 := NewSphere(NewVec3(-R, 0.0, -1.0), R, &materialLeft)
+	// s2 := NewSphere(NewVec3(R, 0.0, -1.0), R, &materialRight)
+
+	// world := NewHittableList(&s1, &s2)
+
+	groundMaterial := NewLambertian(NewVec3(0.5, 0.5, 0.5))
+	s1 := NewSphere(NewVec3(0, -1000, -0), 1000, &groundMaterial)
+
+	world := NewHittableList(&s1)
+
+	for i := -11; i < 11; i++ {
+		for j := -11; j < 11; j++ {
+			chooseMat := rand.Float32()
+			center := NewVec3(float32(i)+0.9*rand.Float32(), 0.2, float32(j)+0.9*rand.Float32())
+
+			if center.Sub(NewVec3(4, 0.2, 0.0)).Length() > 0.9 {
+				if chooseMat < 0.8 {
+					albedo := NewVec3(rand.Float32(), rand.Float32(), rand.Float32()).Mul(NewVec3(rand.Float32(), rand.Float32(), rand.Float32()))
+					sM := NewLambertian(albedo)
+					sN := NewSphere(center, 0.2, &sM)
+					world.Add(&sN)
+				} else if chooseMat < 0.95 {
+					albedo := NewVec3(rand.Float32()*0.5+0.5, rand.Float32()*0.5+0.5, rand.Float32()*0.5+0.5)
+					fuzz := rand.Float64() * 0.5
+					sM := NewMetal(albedo, fuzz)
+					sN := NewSphere(center, 0.2, &sM)
+					world.Add(&sN)
+				} else {
+					sM := NewDielectric(1.5)
+					sN := NewSphere(center, 0.2, &sM)
+					world.Add(&sN)
+				}
+			}
+
+		}
+	}
+
+	mat1 := NewDielectric(1.5)
+	s2 := NewSphere(NewVec3(0.0, 1.0, 0.0), 1.0, &mat1)
+	world.Add(&s2)
+
+	mat2 := NewLambertian(NewVec3(0.4, 0.2, 0.1))
+	s3 := NewSphere(NewVec3(-4.0, 1.0, 0.0), 1.0, &mat2)
+	world.Add(&s3)
+
+	mat3 := NewMetal(NewVec3(0.7, 0.6, 0.5), 0.0)
+	s4 := NewSphere(NewVec3(4.0, 1.0, 0.0), 1.0, &mat3)
+	world.Add(&s4)
+
 	cam := NewCamera()
 	cam.AspectRatio = 16.0 / 9.0
-	cam.ImageWidth = 800
+	cam.ImageWidth = 1200
 	cam.MaxDepth = 50
-	cam.SamplesPerPixel = 100
+	cam.SamplesPerPixel = 500
+
+	cam.VFov = 20
+	cam.lookFrom = NewVec3(13.0, 2.0, 3.0)
+	cam.lookAt = NewVec3(0.0, 0.0, 0.0)
+	cam.vup = NewVec3(0.0, 1.0, 0.0)
+
+	cam.defocusAngle = 0.6
+	cam.focusDistance = 10.0
 
 	cam.Render(world)
 

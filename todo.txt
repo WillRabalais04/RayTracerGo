@@ -1,0 +1,4 @@
+- fix the stupid casting and recasting from and to double and float
+- double check when to pass pointers vs. values
+- make sure all naming conventions are followed
+- streamline negate
