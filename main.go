@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"math/rand/v2"
 	"os"
-	"strings"
 )
 
 type Vec3 struct {
@@ -88,7 +88,6 @@ func RandomUnitVector() Vec3 {
 			return p.Scale(1.0 / float32(math.Sqrt(float64(lensq))))
 		}
 	}
-
 }
 func (Normal Vec3) RandomOnHemisphere() Vec3 {
 	OnUnitSphere := RandomUnitVector()
@@ -105,6 +104,58 @@ func NewBoundedRandomVec(min, max float32) Vec3 {
 	return NewVec3(rand.Float32()*r+min, rand.Float32()*r+min, rand.Float32()*r+min)
 }
 
+type Interval struct {
+	Min float64
+	Max float64
+}
+
+var (
+	EmptyInterval    = Interval{Min: math.Inf(1), Max: math.Inf(-1)}
+	UniverseInterval = Interval{Min: math.Inf(-1), Max: math.Inf(1)}
+)
+
+func NewInterval(min, max float64) Interval {
+	return Interval{Min: min, Max: max}
+}
+func NewEmptyInterval() Interval {
+	return EmptyInterval
+}
+func NewUniverseInterval(min float64, max float64) Interval {
+	return UniverseInterval
+}
+func (i *Interval) Size() float64 {
+	return i.Max - i.Min
+}
+func (i *Interval) Contains(x float64) bool {
+	return i.Min <= x && x <= i.Max
+}
+func (i *Interval) Surrounds(x float64) bool {
+	return i.Min < x && x < i.Max
+}
+func (i *Interval) Clamp(x float64) float64 {
+	if x < i.Min {
+		return i.Min
+	}
+	if x > i.Max {
+		return i.Max
+	}
+	return x
+}
+
+func WriteColor(color Vec3) {
+
+	intensity := NewInterval(0.0, 0.999)
+	r, g, b := int(256*(intensity.Clamp(LinearToGamma(float64(color.X))))), int(256*(intensity.Clamp(LinearToGamma(float64(color.Y))))), int(256*(intensity.Clamp(LinearToGamma(float64(color.Z)))))
+
+	file, err := os.OpenFile("out.ppm", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	fmt.Fprintf(file, "%d %d %d\n", r, g, b)
+}
+
 type Ray struct {
 	Origin    Vec3
 	Direction Vec3
@@ -117,38 +168,42 @@ func (r Ray) PointAtParameter(t float32) Vec3 {
 func NewRay(o, d Vec3) Ray {
 	return Ray{Origin: o, Direction: d}
 }
-func (r Ray) Color(world Hittable) Vec3 {
+func (r Ray) Color(world Hittable, depth int) Vec3 {
+	if depth <= 0 {
+		return NewVec3(0.0, 0.0, 0.0)
+	}
+
 	var rec HitRecord
-	if world.Hit(r, 1e-3, math.MaxFloat32, &rec) {
-		direction := rec.Normal.RandomOnHemisphere()
-		return (NewRay(rec.P, direction).Color(world)).Scale(0.5)
-	} else {
-		unitDirection := r.Direction.GetUnit()
-		t := 0.5 * (unitDirection.Y + 1.0)
-		// 	// ((1-t) * <1,1,1>) + (t * <0.5,0.7,1>)
-		return (NewVec3(1.0, 1.0, 1.0).Scale(1.0 - t)).Add((NewVec3(0.5, 0.7, 1.0).Scale(t)))
+	if world.Hit(r, NewInterval(0.001, math.MaxFloat64), &rec) {
+		direction := rec.Normal.Add(RandomUnitVector())
+		return (NewRay(rec.P, direction).Color(world, depth-1)).Scale(0.5)
 	}
-}
-func (r Ray) HitSphere(center Vec3, radius float32) float32 {
-	oc := r.Origin.Sub(center)
-	// <dot(ray_direction, ray_direction), 2*dot(oc, ray_direction), dot(oc,oc) - radius^2>
-	a, b, c := r.Direction.Dot(r.Direction), 2.0*oc.Dot(r.Direction), oc.Dot(oc)-radius*radius
-	discriminant := b*b - 4*a*c
-	if discriminant < 0 {
-		return -1.0
-	} else {
-		return ((-1.0 * b) - float32(math.Sqrt(float64(discriminant)))) / (2.0 * a)
-	}
+	// if not hit it renders the background color
+	unitDirection := r.Direction.GetUnit()
+	t := 0.5 * (unitDirection.Y + 1.0)
+	// ((1-t) * <1,1,1>) + (t * <0.5,0.7,1>)
+	return (NewVec3(1.0, 1.0, 1.0).Scale(1.0 - t)).Add((NewVec3(0.5, 0.7, 1.0).Scale(t)))
 }
 
 type HitRecord struct {
-	T      float32
-	P      Vec3
-	Normal Vec3
+	T               float32
+	P               Vec3
+	Normal          Vec3
+	FrontFace       bool
+	MaterialPointer *Material
+}
+
+func (h *HitRecord) SetFaceNormal(r Ray, outwardNormal Vec3) {
+	FrontFace := r.Direction.Dot(outwardNormal) < 0
+	if FrontFace {
+		h.Normal = outwardNormal
+	} else {
+		h.Normal = outwardNormal.Negate()
+	}
 }
 
 type Hittable interface {
-	Hit(r Ray, t_min, t_max float32, rec *HitRecord) bool
+	Hit(r Ray, i Interval, rec *HitRecord) bool
 }
 type HittableList struct {
 	List []Hittable
@@ -162,14 +217,14 @@ func NewHittableList(h ...Hittable) *HittableList {
 func (hl *HittableList) Add(h Hittable) {
 	hl.List = append(hl.List, h)
 }
-func (hl *HittableList) Hit(r Ray, t_min, t_max float32, rec *HitRecord) bool {
+func (hl *HittableList) Hit(r Ray, i Interval, rec *HitRecord) bool {
 	var temp HitRecord
 	hitAnything := false
-	closestSoFar := t_max
+	closestSoFar := i.Max
 	for _, hittableObject := range hl.List {
-		if hittableObject.Hit(r, t_min, closestSoFar, &temp) {
+		if hittableObject.Hit(r, NewInterval(i.Min, closestSoFar), &temp) {
 			hitAnything = true
-			closestSoFar = temp.T
+			closestSoFar = float64(temp.T)
 			*rec = temp
 		}
 	}
@@ -184,76 +239,130 @@ type Sphere struct {
 func NewSphere(c Vec3, r float32) Sphere {
 	return Sphere{Center: c, Radius: r}
 }
-func (s *Sphere) Hit(r Ray, t_min, t_max float32, rec *HitRecord) bool {
+
+func (s *Sphere) Hit(r Ray, i Interval, rec *HitRecord) bool {
 	oc := r.Origin.Sub(s.Center)
-	a, b, c := r.Direction.Dot(r.Direction), oc.Dot(r.Direction), oc.Dot(oc)-(s.Radius*s.Radius)
+	a, b, c := r.Direction.SquaredLength(), oc.Dot(r.Direction), oc.Dot(oc)-(s.Radius*s.Radius)
 	discriminant := b*b - a*c
 
 	if discriminant > 0 {
 		sqrtDiscriminant := float32(math.Sqrt(float64(discriminant)))
 		posRoot, negRoot := (-b-sqrtDiscriminant)/a, (-b+sqrtDiscriminant)/a
 		hitT := float32(-1.0)
-		if posRoot < t_max && posRoot > t_min {
+		if i.Surrounds(float64(posRoot)) {
 			hitT = posRoot
-		} else if negRoot < t_max && negRoot > t_min {
+		} else if i.Surrounds(float64(negRoot)) {
 			hitT = negRoot
 		}
+
 		if hitT != -1.0 {
 			rec.T = hitT
 			rec.P = r.PointAtParameter(rec.T)
-			rec.Normal = rec.P.Sub(s.Center).Scale(1.0 / s.Radius)
+			outwardNormal := rec.P.Sub(s.Center).Scale(1.0 / s.Radius)
+			rec.SetFaceNormal(r, outwardNormal)
 			return true
+
 		}
 	}
 	return false
 }
 
 type Camera struct {
-	origin          Vec3
-	lowerLeftCorner Vec3
-	horizontal      Vec3
-	vertical        Vec3
+	ImageWidth        int
+	ImageHeight       int
+	SamplesPerPixel   int
+	MaxDepth          int
+	AspectRatio       float64
+	PixelSamplesScale float64
+	Center            Vec3
+	PixelDeltaU       Vec3
+	PixelDeltaV       Vec3
+	Pixel00Loc        Vec3
 }
 
 func NewCamera() Camera {
 	return Camera{
-		lowerLeftCorner: NewVec3(-2.0, -1.0, -1.0),
-		horizontal:      NewVec3(4.0, 0.0, 0.0),
-		vertical:        NewVec3(0.0, 2.0, 0.0),
-		origin:          NewVec3(0.0, 0.0, 0.0),
+		ImageWidth:      100,
+		SamplesPerPixel: 10,
+		MaxDepth:        50,
+		AspectRatio:     1.0,
 	}
 }
-func (c Camera) GetRay(u, v float32) Ray {
-	// llc + u*horizontal + v*vertical - origin
-	direction := c.lowerLeftCorner.Add(c.horizontal.Scale(u).Add(c.vertical.Scale(v))).Sub(c.origin)
-	return NewRay(c.origin, direction)
+func (c *Camera) InitCamera() {
+	c.ImageHeight = max(int(float64(c.ImageWidth)/c.AspectRatio), 1)
+	c.Center = NewVec3(0.0, 0.0, 0.0)
+	c.PixelSamplesScale = 1.0 / float64(c.SamplesPerPixel)
+	focalLength := 1.0
+	viewPortHeight := 2.0
+	viewPortWidth := viewPortHeight * (float64(c.ImageWidth) / float64(c.ImageHeight))
+	viewPortU, viewPortV := NewVec3(float32(viewPortWidth), 0.0, 0.0), NewVec3(0.0, -float32(viewPortHeight), 0.0)
+	c.PixelDeltaU, c.PixelDeltaV = viewPortU.Scale(1.0/float32(c.ImageWidth)), viewPortV.Scale(1.0/float32(c.ImageHeight))
+	viewPortUpperLeft := c.Center.Sub(NewVec3(0.0, 0.0, float32(focalLength))).Sub(viewPortU.Scale(0.5)).Sub(viewPortV.Scale(0.5)) // center - <0,0,focal length> - (viewportU / 2) - (viewportV / 2)
+	c.Pixel00Loc = viewPortUpperLeft.Add((c.PixelDeltaU.Add(c.PixelDeltaV)).Scale(0.5))                                            // viewPortUpperLeft + 0.5*(PixelDeltaU + PixelDeltaV)
+}
+func (c *Camera) GetRay(i, j float32) Ray {
+	offset := NewBoundedRandomVec(-0.5, 0.5)
+	pixelSample := c.Pixel00Loc.Add(c.PixelDeltaU.Scale(i + offset.X).Add(c.PixelDeltaV.Scale(j + offset.Y)))
+	rayOrigin := c.Center
+	rayDirection := pixelSample.Sub(rayOrigin)
+	return NewRay(rayOrigin, rayDirection)
+}
+func (c *Camera) Render(world Hittable) {
+
+	c.InitCamera()
+	initImage(c.ImageWidth, c.ImageHeight)
+	lastPercent := -1
+	for i := 0; i < c.ImageHeight; i++ {
+		for j := 0; j < c.ImageWidth; j++ {
+			pixelColor := NewVec3(0.0, 0.0, 0.0)
+			for sample := 0; sample < c.SamplesPerPixel; sample++ {
+				r := c.GetRay(float32(j), float32(i))
+				pixelColor.PlusEq(r.Color(world, c.MaxDepth))
+			}
+			WriteColor(pixelColor.Scale(float32(c.PixelSamplesScale)))
+		}
+		percent := (i*100)/c.ImageHeight + 1
+		if percent%5 == 0 && percent != lastPercent {
+			fmt.Printf("%d percent done.\n", percent)
+			lastPercent = percent
+		}
+	}
+}
+
+func LinearToGamma(linearComponent float64) float64 {
+	if linearComponent > 0 {
+		return math.Sqrt(linearComponent)
+	}
+	return 0
+}
+
+type Material interface {
+	Scatter(r *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool
+}
+
+type Lambertian struct {
+	Albedo Vec3
+}
+
+func initImage(w, h int) {
+	f, err := os.Create("out.ppm")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "P3\n%d %d\n255\n", w, h)
 }
 
 func main() {
-	nx, ny, ns := 400, 200, 200
-	var out strings.Builder
-	out.WriteString(fmt.Sprintf("P3\n%d %d\n255\n", nx, ny))
-	s1, s2 := &Sphere{Center: NewVec3(0.0, 0.0, -1.0), Radius: 0.5}, &Sphere{Center: NewVec3(0.0, -100.5, -1.0), Radius: 100}
-	world := NewHittableList(s1, s2)
+
+	s1, s2 := NewSphere(NewVec3(0.0, 0.0, -1.0), 0.5), NewSphere(NewVec3(0.0, -100.5, -1.0), 100)
+	world := NewHittableList(&s1, &s2)
 	cam := NewCamera()
-	for j := ny - 1; j >= 0; j-- {
-		for i := 0; i < nx; i++ {
-			col := NewVec3(0.0, 0.0, 0.0)
-			for s := 0; s < ns; s++ {
-				u, v := float32(float64(i)+rand.Float64())/float32(nx), float32(float64(j)+rand.Float64())/float32(ny)
-				r := cam.GetRay(u, v)
-				// p := r.PointAtParameter(2.0)
-				col.PlusEq(r.Color(world))
-			}
-			col.ScaleAssign(1.0 / float32(ns))
-			// col = NewVec3(float32(math.Sqrt(float64(col.X))), float32(math.Sqrt(float64(col.X))), float32(math.Sqrt(float64(col.Z)))) // optional gamma corection
-			ir, ig, ib := int(255.99*col.X), int(255.99*col.Y), int(255.99*col.Z)
-			out.WriteString(fmt.Sprintf("%d %d %d\n", ir, ig, ib))
-		}
-	}
-	err := os.WriteFile("out.ppm", []byte(out.String()), 0644)
-	if err != nil {
-		fmt.Println("Error writing file: ", err)
-	}
+	cam.AspectRatio = 16.0 / 9.0
+	cam.ImageWidth = 800
+	cam.MaxDepth = 50
+	cam.SamplesPerPixel = 100
+
+	cam.Render(world)
 
 }
