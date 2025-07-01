@@ -9,11 +9,11 @@ import (
 )
 
 type Vec3 struct {
-	X, Y, Z float32
+	X, Y, Z float64
 }
 
 // Vec3 Ops
-func NewVec3(x, y, z float32) Vec3 {
+func NewVec3(x, y, z float64) Vec3 {
 	return Vec3{X: x, Y: y, Z: z}
 }
 func (v1 Vec3) Add(v2 Vec3) Vec3 {
@@ -48,15 +48,15 @@ func (v1 *Vec3) SlashEq(v2 Vec3) {
 	v1.Y /= v2.Y
 	v1.Z /= v2.Z
 }
-func (v Vec3) Scale(t float32) Vec3 {
+func (v Vec3) Scale(t float64) Vec3 {
 	return Vec3{X: t * v.X, Y: t * v.Y, Z: t * v.Z}
 }
-func (v *Vec3) ScaleAssign(t float32) {
+func (v *Vec3) ScaleAssign(t float64) {
 	v.X *= t
 	v.Y *= t
 	v.Z *= t
 }
-func Dot(v1, v2 *Vec3) float32 {
+func Dot(v1, v2 *Vec3) float64 {
 	return v1.X*v2.X + v1.Y*v2.Y + v1.Z*v2.Z
 }
 func Cross(v1, v2 Vec3) Vec3 {
@@ -74,18 +74,18 @@ func (v Vec3) GetUnitVec() Vec3 {
 func (v Vec3) Negate() Vec3 {
 	return Vec3{X: -v.X, Y: -v.Y, Z: -v.Z}
 }
-func (v Vec3) LengthSquared() float32 {
+func (v Vec3) LengthSquared() float64 {
 	return v.X*v.X + v.Y*v.Y + v.Z*v.Z
 }
-func (v Vec3) Length() float32 {
-	return float32(math.Sqrt(float64(v.LengthSquared())))
+func (v Vec3) Length() float64 {
+	return math.Sqrt(v.LengthSquared())
 }
 func RandomUnitVector() Vec3 {
 	for {
 		p := NewBoundedRandomVec(-1, 1)
 		lensq := p.LengthSquared()
 		if 1e-160 < lensq && lensq <= 1 {
-			return p.Scale(1.0 / float32(math.Sqrt(float64(lensq))))
+			return p.Scale(1.0 / math.Sqrt(lensq))
 		}
 	}
 }
@@ -98,7 +98,7 @@ func (Normal *Vec3) RandomOnHemisphere() Vec3 {
 }
 func RandomInUnitDisk() Vec3 {
 	for {
-		p := NewVec3(rand.Float32()*2-1, rand.Float32()*2-1, rand.Float32()*2-1)
+		p := NewVec3(rand.Float64()*2-1, rand.Float64()*2-1, rand.Float64()*2-1)
 		if p.LengthSquared() < 1 {
 			return p
 		}
@@ -106,7 +106,7 @@ func RandomInUnitDisk() Vec3 {
 }
 func (v *Vec3) NearZero() bool {
 	s := 1e-8
-	return (math.Abs(float64(v.X)) < s) && math.Abs(float64(v.Y)) < s && math.Abs(float64(v.Z)) < s
+	return (math.Abs(v.X) < s) && math.Abs(v.Y) < s && math.Abs(v.Z) < s
 }
 
 func Reflect(v, n *Vec3) Vec3 {
@@ -115,16 +115,16 @@ func Reflect(v, n *Vec3) Vec3 {
 func Refract(uv, n *Vec3, etaiOverEtat float64) Vec3 {
 	negatedUV := uv.Negate()
 	cosTheta := min(Dot(&negatedUV, n), 1.0)
-	rOutPerp := (uv.Add(n.Scale(cosTheta))).Scale(float32(etaiOverEtat))
-	rOutParallel := n.Scale(float32(-math.Sqrt(math.Abs(float64(1.0 - rOutPerp.LengthSquared())))))
+	rOutPerp := (uv.Add(n.Scale(cosTheta))).Scale(etaiOverEtat)
+	rOutParallel := n.Scale(-math.Sqrt(math.Abs(1.0 - rOutPerp.LengthSquared())))
 	return rOutParallel.Add(rOutPerp)
 }
 func NewRandomVec() Vec3 {
-	return NewVec3(rand.Float32(), rand.Float32(), rand.Float32())
+	return NewVec3(rand.Float64(), rand.Float64(), rand.Float64())
 }
-func NewBoundedRandomVec(min, max float32) Vec3 {
+func NewBoundedRandomVec(min, max float64) Vec3 {
 	r := max - min
-	return NewVec3(rand.Float32()*r+min, rand.Float32()*r+min, rand.Float32()*r+min)
+	return NewVec3(rand.Float64()*r+min, rand.Float64()*r+min, rand.Float64()*r+min)
 }
 
 type Interval struct {
@@ -169,9 +169,9 @@ func WriteColor(color Vec3) {
 
 	intensity := NewInterval(0.0, 0.999)
 
-	r := int(256 * intensity.Clamp(LinearToGamma(float64(color.X))))
-	g := int(256 * intensity.Clamp(LinearToGamma(float64(color.Y))))
-	b := int(256 * intensity.Clamp(LinearToGamma(float64(color.Z))))
+	r := int(256 * intensity.Clamp(LinearToGamma(color.X)))
+	g := int(256 * intensity.Clamp(LinearToGamma(color.Y)))
+	b := int(256 * intensity.Clamp(LinearToGamma(color.Z)))
 
 	file, err := os.OpenFile("out.ppm", os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
@@ -188,7 +188,7 @@ type Ray struct {
 }
 
 // Ray ops
-func (r Ray) PointAtParameter(t float32) Vec3 {
+func (r Ray) PointAtParameter(t float64) Vec3 {
 	return r.Origin.Add(r.Direction.Scale(t))
 }
 func NewRay(o, d Vec3) Ray {
@@ -218,7 +218,7 @@ func (c *Camera) RayColor(r Ray, depth int, world Hittable) Vec3 {
 }
 
 type HitRecord struct {
-	T               float32
+	T               float64
 	P               Vec3
 	Normal          Vec3
 	FrontFace       bool
@@ -256,7 +256,7 @@ func (hl *HittableList) Hit(r Ray, i Interval, rec *HitRecord) bool {
 	for _, hittableObject := range hl.List {
 		if hittableObject.Hit(r, NewInterval(i.Min, closestSoFar), &temp) {
 			hitAnything = true
-			closestSoFar = float64(temp.T)
+			closestSoFar = temp.T
 			*rec = temp
 		}
 	}
@@ -265,11 +265,11 @@ func (hl *HittableList) Hit(r Ray, i Interval, rec *HitRecord) bool {
 
 type Sphere struct {
 	Center Vec3
-	Radius float32
+	Radius float64
 	Mat    Material
 }
 
-func NewSphere(c Vec3, r float32, mat Material) Sphere {
+func NewSphere(c Vec3, r float64, mat Material) Sphere {
 	return Sphere{Center: c, Radius: max(0, r), Mat: mat}
 }
 
@@ -280,12 +280,12 @@ func (s *Sphere) Hit(r Ray, i Interval, rec *HitRecord) bool {
 	rec.MaterialPointer = &s.Mat
 
 	if discriminant > 0 {
-		sqrtDiscriminant := float32(math.Sqrt(float64(discriminant)))
+		sqrtDiscriminant := math.Sqrt(discriminant)
 		posRoot, negRoot := (-b-sqrtDiscriminant)/a, (-b+sqrtDiscriminant)/a
-		hitT := float32(-1.0)
-		if i.Surrounds(float64(posRoot)) {
+		hitT := -1.0
+		if i.Surrounds(posRoot) {
 			hitT = posRoot
-		} else if i.Surrounds(float64(negRoot)) {
+		} else if i.Surrounds(negRoot) {
 			hitT = negRoot
 		}
 
@@ -350,26 +350,26 @@ func (c *Camera) InitCamera() {
 	theta := DegreesToRadians(c.VFov)
 	h := math.Tan(theta / 2)
 
-	viewPortHeight := 2.0 * h * float64(c.focusDistance)
+	viewPortHeight := 2.0 * h * c.focusDistance
 	viewPortWidth := viewPortHeight * (float64(c.ImageWidth) / float64(c.ImageHeight))
 
 	c.w = (c.lookFrom.Sub(c.lookAt)).GetUnitVec()
 	c.u = (Cross(c.vup, c.w)).GetUnitVec()
 	c.v = Cross(c.w, c.u)
 
-	viewPortU := c.u.Scale(float32(viewPortWidth))
-	viewPortV := ((c.v).Negate()).Scale(float32(viewPortHeight))
+	viewPortU := c.u.Scale(viewPortWidth)
+	viewPortV := ((c.v).Negate()).Scale(viewPortHeight)
 
-	c.PixelDeltaU, c.PixelDeltaV = viewPortU.Scale(1.0/float32(c.ImageWidth)), viewPortV.Scale(1.0/float32(c.ImageHeight))
-	viewPortUpperLeft := c.Center.Sub(c.w.Scale(float32(c.focusDistance))).Sub(viewPortU.Scale(0.5)).Sub(viewPortV.Scale(0.5)) // center - <0,0,focal length> - (viewportU / 2) - (viewportV / 2)
+	c.PixelDeltaU, c.PixelDeltaV = viewPortU.Scale(1.0/float64(c.ImageWidth)), viewPortV.Scale(1.0/float64(c.ImageHeight))
+	viewPortUpperLeft := c.Center.Sub(c.w.Scale(c.focusDistance)).Sub(viewPortU.Scale(0.5)).Sub(viewPortV.Scale(0.5)) // center - <0,0,focal length> - (viewportU / 2) - (viewportV / 2)
 	c.Pixel00Loc = viewPortUpperLeft.Add((c.PixelDeltaU.Add(c.PixelDeltaV)).Scale(0.5))
 	// viewPortUpperLeft + 0.5*(PixelDeltaU + PixelDeltaV)
 	defocusRadius := c.focusDistance * math.Tan(DegreesToRadians(c.defocusAngle/2))
-	c.defocusDiskU = c.u.Scale(float32(defocusRadius))
-	c.defocusDiskV = c.v.Scale(float32(defocusRadius))
+	c.defocusDiskU = c.u.Scale(defocusRadius)
+	c.defocusDiskV = c.v.Scale(defocusRadius)
 
 }
-func (c *Camera) GetRay(i, j float32) Ray {
+func (c *Camera) GetRay(i, j float64) Ray {
 	offset := NewBoundedRandomVec(-0.5, 0.5)
 	pixelSample := c.Pixel00Loc.Add(c.PixelDeltaU.Scale(i + offset.X).Add(c.PixelDeltaV.Scale(j + offset.Y)))
 
@@ -391,10 +391,10 @@ func (c *Camera) Render(world Hittable) {
 		for j := 0; j < c.ImageWidth; j++ {
 			pixelColor := NewVec3(0.0, 0.0, 0.0)
 			for sample := 0; sample < c.SamplesPerPixel; sample++ {
-				r := c.GetRay(float32(j), float32(i))
+				r := c.GetRay(float64(j), float64(i))
 				pixelColor.PlusEq(c.RayColor(r, c.MaxDepth, world))
 			}
-			WriteColor(pixelColor.Scale(float32(c.PixelSamplesScale)))
+			WriteColor(pixelColor.Scale(c.PixelSamplesScale))
 		}
 		percent := (i*100)/c.ImageHeight + 1
 		if percent%5 == 0 && percent != lastPercent {
@@ -447,7 +447,7 @@ func NewMetal(albedo Vec3, fuzz float64) Metal {
 }
 func (m *Metal) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool {
 	reflected := Reflect(&rIn.Direction, &rec.Normal)
-	reflected = reflected.GetUnitVec().Add(RandomUnitVector().Scale(float32(m.Fuzz)))
+	reflected = reflected.GetUnitVec().Add(RandomUnitVector().Scale(m.Fuzz))
 	*scattered = NewRay(rec.P, reflected)
 	*attenuation = m.Albedo
 	return Dot(&scattered.Direction, &rec.Normal) > 0
@@ -474,11 +474,11 @@ func (d *Dielectric) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scatte
 	unitDirection := rIn.Direction.GetUnitVec()
 	negatedUnitDirection := unitDirection.Negate()
 	cosTheta := min(Dot(&negatedUnitDirection, &rec.Normal), 1.0)
-	sinTheta := math.Sqrt(1.0 - float64(cosTheta*cosTheta))
+	sinTheta := math.Sqrt(1.0 - cosTheta*cosTheta)
 	cannotRefract := ri*sinTheta > 1.0
 	var direction Vec3
 
-	if cannotRefract || d.Reflectance(float64(cosTheta), ri) > float64(rand.Float32()) {
+	if cannotRefract || d.Reflectance(cosTheta, ri) > rand.Float64() {
 		direction = Reflect(&unitDirection, &rec.Normal)
 	} else {
 		direction = Refract(&unitDirection, &rec.Normal, ri)
@@ -513,7 +513,7 @@ func main() {
 
 	// world := NewHittableList(&s1, &s2, &s3, &s4, &s5)
 
-	// R := float32(math.Cos(math.Pi / 4))
+	// R := math.Cos(math.Pi / 4)
 	// materialLeft := NewLambertian(NewVec3(0.0, 0.0, 1.0))
 	// materialRight := NewLambertian(NewVec3(1.0, 0.0, 0.0))
 
@@ -529,17 +529,17 @@ func main() {
 
 	for i := -11; i < 11; i++ {
 		for j := -11; j < 11; j++ {
-			chooseMat := rand.Float32()
-			center := NewVec3(float32(i)+0.9*rand.Float32(), 0.2, float32(j)+0.9*rand.Float32())
+			chooseMat := rand.Float64()
+			center := NewVec3(float64(i)+0.9*rand.Float64(), 0.2, float64(j)+0.9*rand.Float64())
 
 			if center.Sub(NewVec3(4, 0.2, 0.0)).Length() > 0.9 {
 				if chooseMat < 0.8 {
-					albedo := NewVec3(rand.Float32(), rand.Float32(), rand.Float32()).Mul(NewVec3(rand.Float32(), rand.Float32(), rand.Float32()))
+					albedo := NewVec3(rand.Float64(), rand.Float64(), rand.Float64()).Mul(NewVec3(rand.Float64(), rand.Float64(), rand.Float64()))
 					sM := NewLambertian(albedo)
 					sN := NewSphere(center, 0.2, &sM)
 					world.Add(&sN)
 				} else if chooseMat < 0.95 {
-					albedo := NewVec3(rand.Float32()*0.5+0.5, rand.Float32()*0.5+0.5, rand.Float32()*0.5+0.5)
+					albedo := NewVec3(rand.Float64()*0.5+0.5, rand.Float64()*0.5+0.5, rand.Float64()*0.5+0.5)
 					fuzz := rand.Float64() * 0.5
 					sM := NewMetal(albedo, fuzz)
 					sN := NewSphere(center, 0.2, &sM)
