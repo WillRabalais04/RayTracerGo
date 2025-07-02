@@ -17,6 +17,10 @@ type Vec3 struct {
 func NewVec3(x, y, z float64) Vec3 {
 	return Vec3{X: x, Y: y, Z: z}
 }
+func NewVec3Pointer(x, y, z float64) *Vec3 {
+	vec := Vec3{X: x, Y: y, Z: z}
+	return &vec
+}
 func (v1 Vec3) Add(v2 Vec3) Vec3 {
 	return Vec3{X: v1.X + v2.X, Y: v1.Y + v2.Y, Z: v1.Z + v2.Z}
 }
@@ -75,20 +79,11 @@ func (v Vec3) GetUnitVec() Vec3 {
 func (v Vec3) Negate() Vec3 {
 	return Vec3{X: -v.X, Y: -v.Y, Z: -v.Z}
 }
-func (v Vec3) LengthSquared() float64 {
+func (v *Vec3) LengthSquared() float64 {
 	return v.X*v.X + v.Y*v.Y + v.Z*v.Z
 }
 func (v Vec3) Length() float64 {
 	return math.Sqrt(v.LengthSquared())
-}
-func RandomUnitVector() Vec3 {
-	for {
-		p := NewBoundedRandomVec(-1, 1)
-		lensq := p.LengthSquared()
-		if 1e-160 < lensq && lensq <= 1 {
-			return p.Scale(1.0 / math.Sqrt(lensq))
-		}
-	}
 }
 func (Normal *Vec3) RandomOnHemisphere() Vec3 {
 	OnUnitSphere := RandomUnitVector()
@@ -96,14 +91,6 @@ func (Normal *Vec3) RandomOnHemisphere() Vec3 {
 		OnUnitSphere.ScaleAssign(-1.0)
 	}
 	return OnUnitSphere
-}
-func RandomInUnitDisk() Vec3 {
-	for {
-		p := NewVec3(rand.Float64()*2-1, rand.Float64()*2-1, rand.Float64()*2-1)
-		if p.LengthSquared() < 1 {
-			return p
-		}
-	}
 }
 func (v *Vec3) NearZero() bool {
 	s := 1e-8
@@ -123,10 +110,6 @@ func (v *Vec3) GetDim(i int) float64 {
 	return -1.0
 }
 
-func (v *Vec3) PrintVec() {
-	fmt.Printf("<%f,%f,%f>", v.X, v.Y, v.Z)
-}
-
 func Reflect(v, n *Vec3) Vec3 {
 	return v.Sub(n.Scale(2 * Dot(v, n)))
 }
@@ -136,6 +119,24 @@ func Refract(uv, n *Vec3, etaiOverEtat float64) Vec3 {
 	rOutPerp := (uv.Add(n.Scale(cosTheta))).Scale(etaiOverEtat)
 	rOutParallel := n.Scale(-math.Sqrt(math.Abs(1.0 - rOutPerp.LengthSquared())))
 	return rOutParallel.Add(rOutPerp)
+}
+
+func RandomUnitVector() Vec3 {
+	for {
+		p := NewBoundedRandomVec(-1, 1)
+		lensq := p.LengthSquared()
+		if 1e-160 < lensq && lensq <= 1 {
+			return p.Scale(1.0 / math.Sqrt(lensq))
+		}
+	}
+}
+func RandomInUnitDisk() Vec3 {
+	for {
+		p := NewVec3(rand.Float64()*2-1, rand.Float64()*2-1, rand.Float64()*2-1)
+		if p.LengthSquared() < 1 {
+			return p
+		}
+	}
 }
 func NewRandomVec() Vec3 {
 	return NewVec3(rand.Float64(), rand.Float64(), rand.Float64())
@@ -158,12 +159,6 @@ var (
 func NewInterval(min, max float64) Interval {
 	return Interval{Min: min, Max: max}
 }
-func NewEmptyInterval() Interval {
-	return EmptyInterval
-}
-func NewUniverseInterval(min float64, max float64) Interval {
-	return UniverseInterval
-}
 func (i *Interval) Size() float64 {
 	return i.Max - i.Min
 }
@@ -185,26 +180,8 @@ func (i *Interval) Clamp(x float64) float64 {
 func (i *Interval) Expand(delta float64) Interval {
 	return NewInterval(i.Min-(delta/2), i.Max+(delta/2))
 }
-
 func NewEnclosingInterval(a, b *Interval) Interval {
 	return Interval{Min: min(a.Min, b.Min), Max: max(a.Max, b.Max)}
-}
-
-func WriteColor(color Vec3) {
-
-	intensity := NewInterval(0.0, 0.999)
-
-	r := int(256 * intensity.Clamp(LinearToGamma(color.X)))
-	g := int(256 * intensity.Clamp(LinearToGamma(color.Y)))
-	b := int(256 * intensity.Clamp(LinearToGamma(color.Z)))
-
-	file, err := os.OpenFile("out.ppm", os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	fmt.Fprintf(file, "%d %d %d\n", r, g, b)
 }
 
 type Ray struct {
@@ -219,28 +196,6 @@ func (r Ray) at(t float64) Vec3 {
 }
 func NewRay(o, d Vec3, t float64) Ray {
 	return Ray{Origin: o, Direction: d, Time: t}
-}
-func (c *Camera) RayColor(r Ray, depth int, world Hittable) Vec3 {
-	if depth <= 0 {
-		return NewVec3(0.0, 0.0, 0.0)
-	}
-
-	var rec HitRecord
-	if world.Hit(&r, NewInterval(0.001, math.MaxFloat64), &rec) {
-		var scattered Ray
-		var attenuation Vec3
-
-		if rec.MaterialPointer != nil && (*rec.MaterialPointer).Scatter(&r, &rec, &attenuation, &scattered) {
-			return attenuation.Mul(c.RayColor(scattered, depth-1, world))
-		}
-		return NewVec3(0, 0, 0)
-	}
-
-	// if not hit it renders the background color
-	unitDirection := r.Direction.GetUnitVec()
-	t := 0.5 * (unitDirection.Y + 1.0)
-	// ((1-t) * <1,1,1>) + (t * <0.5,0.7,1>)
-	return (NewVec3(1.0, 1.0, 1.0).Scale(1.0 - t)).Add((NewVec3(0.5, 0.7, 1.0).Scale(t)))
 }
 
 type HitRecord struct {
@@ -291,7 +246,6 @@ func (hl *HittableList) Hit(r *Ray, i Interval, rec *HitRecord) bool {
 	}
 	return hitAnything
 }
-
 func (hl *HittableList) BBOX() *AABB {
 	return &hl.BBOXField
 }
@@ -308,7 +262,6 @@ func NewSphere(c Vec3, r float64, mat Material) Sphere {
 	bbox := NewAABBFromPoints(c.Sub(rvec), c.Add(rvec))
 	return Sphere{Center: NewRay(c, NewVec3(0.0, 0.0, 0.0), 0), Radius: max(0, r), Mat: mat, BBOXField: bbox}
 }
-
 func NewMovingSphere(c1, c2 Vec3, r float64, mat Material) Sphere {
 	center := NewRay(c1, c2.Sub(c1), 0)
 	rvec := NewVec3(r, r, r)
@@ -316,9 +269,6 @@ func NewMovingSphere(c1, c2 Vec3, r float64, mat Material) Sphere {
 	box2 := NewAABBFromPoints(center.at(1).Sub(rvec), center.at(1).Add(rvec))
 	bbox := MergeAABBs(&box1, &box2)
 	return Sphere{Center: center, Radius: max(0, r), Mat: mat, BBOXField: bbox}
-}
-func (s *Sphere) BBOX() *AABB {
-	return &s.BBOXField
 }
 func (s *Sphere) Hit(r *Ray, i Interval, rec *HitRecord) bool {
 	currentCenter := s.Center.at(r.Time)
@@ -350,33 +300,23 @@ func (s *Sphere) Hit(r *Ray, i Interval, rec *HitRecord) bool {
 	return true
 
 }
+func (s *Sphere) BBOX() *AABB {
+	return &s.BBOXField
+}
 
 type BVHNode struct {
 	Left, Right Hittable
 	BBOXField   AABB
-}
-
-// pointer to BVHNode implements hittable but BVHNode itself does not
-
-func BoxCompare(axisIndex int, a, b Hittable) bool {
-	if a.BBOX() == nil || b.BBOX() == nil {
-		fmt.Printf("boxcomparefailed")
-		return false
-	}
-	// compares min of chosen axis of a and b
-	return a.BBOX().axisInterval(axisIndex).Min < b.BBOX().axisInterval(axisIndex).Min
-}
+} // pointer to BVHNode implements hittable but BVHNode itself does not
 
 func NewBVHNode(objects []Hittable, start, end int) *BVHNode {
-
 	bbox := NewAABB(EmptyInterval, EmptyInterval, EmptyInterval)
+	subList := make([]Hittable, end-start)
+	copy(subList, objects[start:end])
 
 	for objectIndex := start; objectIndex < end; objectIndex++ {
 		bbox = MergeAABBs(&bbox, objects[objectIndex].BBOX())
 	}
-
-	subList := make([]Hittable, end-start)
-	copy(subList, objects[start:end])
 
 	var leftNode, rightNode Hittable
 	span := end - start
@@ -401,17 +341,10 @@ func NewBVHNode(objects []Hittable, start, end int) *BVHNode {
 		Right:     rightNode,
 		BBOXField: bbox,
 	}
-
 }
-
 func NewBVHNodeFromList(list HittableList) *BVHNode {
 	return NewBVHNode(list.Objects, 0, len(list.Objects))
 }
-
-func (n *BVHNode) BBOX() *AABB {
-	return &n.BBOXField
-}
-
 func (n *BVHNode) Hit(r *Ray, i Interval, rec *HitRecord) bool {
 	if !n.BBOXField.Hit(r, i) {
 		return false
@@ -426,7 +359,9 @@ func (n *BVHNode) Hit(r *Ray, i Interval, rec *HitRecord) bool {
 	hitRight := n.Right.Hit(r, NewInterval(i.Min, hitT), rec)
 
 	return hitLeft || hitRight
-
+}
+func (n *BVHNode) BBOX() *AABB {
+	return &n.BBOXField
 }
 
 type Camera struct {
@@ -466,10 +401,6 @@ func NewCamera() Camera {
 		lookAt:          NewVec3(0.0, 0.0, -1.0),
 		vup:             NewVec3(0.0, 1.0, 0.0),
 	}
-}
-
-func DegreesToRadians(degrees float64) float64 {
-	return degrees * math.Pi / 180
 }
 func (c *Camera) InitCamera() {
 	c.ImageHeight = max(int(float64(c.ImageWidth)/c.AspectRatio), 1)
@@ -511,8 +442,29 @@ func (c *Camera) GetRay(i, j float64) Ray {
 	rayDirection := pixelSample.Sub(rayOrigin)
 	return NewRay(rayOrigin, rayDirection, rand.Float64())
 }
-func (c *Camera) Render(world Hittable) {
+func (c *Camera) RayColor(r Ray, depth int, world Hittable) Vec3 {
+	if depth <= 0 {
+		return NewVec3(0.0, 0.0, 0.0)
+	}
 
+	var rec HitRecord
+	if world.Hit(&r, NewInterval(0.001, math.MaxFloat64), &rec) {
+		var scattered Ray
+		var attenuation Vec3
+
+		if rec.MaterialPointer != nil && (*rec.MaterialPointer).Scatter(&r, &rec, &attenuation, &scattered) {
+			return attenuation.Mul(c.RayColor(scattered, depth-1, world))
+		}
+		return NewVec3(0, 0, 0)
+	}
+
+	// if not hit it renders the background color
+	unitDirection := r.Direction.GetUnitVec()
+	t := 0.5 * (unitDirection.Y + 1.0)
+	// ((1-t) * <1,1,1>) + (t * <0.5,0.7,1>)
+	return (NewVec3(1.0, 1.0, 1.0).Scale(1.0 - t)).Add((NewVec3(0.5, 0.7, 1.0).Scale(t)))
+}
+func (c *Camera) Render(world Hittable) {
 	c.InitCamera()
 	InitImage(c.ImageWidth, c.ImageHeight)
 	lastPercent := -1
@@ -532,23 +484,14 @@ func (c *Camera) Render(world Hittable) {
 		}
 	}
 }
-
 func (c *Camera) defocusDiskSample() Vec3 {
 	p := RandomInUnitDisk()
 	return c.Center.Add(c.defocusDiskU.Scale(p.X).Add(c.defocusDiskV.Scale(p.Y)))
 }
 
-func LinearToGamma(linearComponent float64) float64 {
-	if linearComponent > 0 {
-		return math.Sqrt(linearComponent)
-	}
-	return 0
-}
-
 type Material interface {
 	Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool
 }
-
 type Lambertian struct {
 	Albedo Vec3
 }
@@ -643,12 +586,9 @@ func NewAABBFromPoints(a, b Vec3) AABB {
 	}
 	return AABB{X: x, Y: y, Z: z}
 }
-
 func MergeAABBs(b0, b1 *AABB) AABB {
-
 	return NewAABB(NewEnclosingInterval(&b0.X, &b1.X), NewEnclosingInterval(&b0.Y, &b1.Y), NewEnclosingInterval(&b0.Z, &b1.Z))
 }
-
 func (aabb *AABB) axisInterval(n int) *Interval {
 	if n == 1 {
 		return &aabb.Y
@@ -658,7 +598,6 @@ func (aabb *AABB) axisInterval(n int) *Interval {
 	}
 	return &aabb.X
 }
-
 func (aabb *AABB) Hit(r *Ray, i Interval) bool {
 
 	for axis := 0; axis < 3; axis++ {
@@ -682,32 +621,9 @@ func (aabb *AABB) Hit(r *Ray, i Interval) bool {
 
 	return true
 }
-
 func (aabb *AABB) LongestAxis() int {
 	return ArgMax(aabb.X.Size(), aabb.Y.Size(), aabb.Z.Size())
 }
-
-func InitImage(w, h int) {
-	f, err := os.Create("out.ppm")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-	fmt.Fprintf(f, "P3\n%d %d\n255\n", w, h)
-}
-
-func ArgMax(sizes ...float64) int {
-	maxIndex := 0
-	maxValue := sizes[0]
-	for i, v := range sizes[1:] {
-		if v > maxValue {
-			maxIndex = i + 1
-			maxValue = v
-		}
-	}
-	return maxIndex
-}
-
 func main() {
 
 	// materialGround := NewLambertian(NewVec3(0.8, 0.8, 0.0))
@@ -794,4 +710,61 @@ func main() {
 
 	cam.Render(world)
 
+}
+
+// Utilities
+func (v *Vec3) PrintVec() {
+	fmt.Printf("<%f,%f,%f>", v.X, v.Y, v.Z)
+}
+func LinearToGamma(linearComponent float64) float64 {
+	if linearComponent > 0 {
+		return math.Sqrt(linearComponent)
+	}
+	return 0
+}
+func BoxCompare(axisIndex int, a, b Hittable) bool {
+	if a.BBOX() == nil || b.BBOX() == nil {
+		fmt.Printf("boxcomparefailed")
+		return false
+	}
+	// compares min of chosen axis of a and b
+	return a.BBOX().axisInterval(axisIndex).Min < b.BBOX().axisInterval(axisIndex).Min
+}
+func DegreesToRadians(degrees float64) float64 {
+	return degrees * math.Pi / 180
+}
+func ArgMax(sizes ...float64) int {
+	maxIndex := 0
+	maxValue := sizes[0]
+	for i, v := range sizes[1:] {
+		if v > maxValue {
+			maxIndex = i + 1
+			maxValue = v
+		}
+	}
+	return maxIndex
+}
+func InitImage(w, h int) {
+	f, err := os.Create("out.ppm")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "P3\n%d %d\n255\n", w, h)
+}
+func WriteColor(color Vec3) {
+
+	intensity := NewInterval(0.0, 0.999)
+
+	r := int(256 * intensity.Clamp(LinearToGamma(color.X)))
+	g := int(256 * intensity.Clamp(LinearToGamma(color.Y)))
+	b := int(256 * intensity.Clamp(LinearToGamma(color.Z)))
+
+	file, err := os.OpenFile("out.ppm", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	fmt.Fprintf(file, "%d %d %d\n", r, g, b)
 }
