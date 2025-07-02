@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"os"
+	"sort"
 )
 
 type Vec3 struct {
@@ -108,6 +109,23 @@ func (v *Vec3) NearZero() bool {
 	s := 1e-8
 	return (math.Abs(v.X) < s) && math.Abs(v.Y) < s && math.Abs(v.Z) < s
 }
+func (v *Vec3) GetDim(i int) float64 {
+	if i == 0 {
+		return v.X
+	}
+	if i == 1 {
+		return v.Y
+	}
+	if i == 2 {
+		return v.Z
+	}
+
+	return -1.0
+}
+
+func (v *Vec3) PrintVec() {
+	fmt.Printf("<%f,%f,%f>", v.X, v.Y, v.Z)
+}
 
 func Reflect(v, n *Vec3) Vec3 {
 	return v.Sub(n.Scale(2 * Dot(v, n)))
@@ -164,6 +182,13 @@ func (i *Interval) Clamp(x float64) float64 {
 	}
 	return x
 }
+func (i *Interval) Expand(delta float64) Interval {
+	return NewInterval(i.Min-(delta/2), i.Max+(delta/2))
+}
+
+func NewEnclosingInterval(a, b *Interval) Interval {
+	return Interval{Min: min(a.Min, b.Min), Max: max(a.Max, b.Max)}
+}
 
 func WriteColor(color Vec3) {
 
@@ -185,14 +210,15 @@ func WriteColor(color Vec3) {
 type Ray struct {
 	Origin    Vec3
 	Direction Vec3
+	Time      float64
 }
 
 // Ray ops
-func (r Ray) PointAtParameter(t float64) Vec3 {
+func (r Ray) at(t float64) Vec3 {
 	return r.Origin.Add(r.Direction.Scale(t))
 }
-func NewRay(o, d Vec3) Ray {
-	return Ray{Origin: o, Direction: d}
+func NewRay(o, d Vec3, t float64) Ray {
+	return Ray{Origin: o, Direction: d, Time: t}
 }
 func (c *Camera) RayColor(r Ray, depth int, world Hittable) Vec3 {
 	if depth <= 0 {
@@ -200,7 +226,7 @@ func (c *Camera) RayColor(r Ray, depth int, world Hittable) Vec3 {
 	}
 
 	var rec HitRecord
-	if world.Hit(r, NewInterval(0.001, math.MaxFloat64), &rec) {
+	if world.Hit(&r, NewInterval(0.001, math.MaxFloat64), &rec) {
 		var scattered Ray
 		var attenuation Vec3
 
@@ -235,25 +261,28 @@ func (h *HitRecord) SetFaceNormal(r *Ray, outwardNormal Vec3) {
 }
 
 type Hittable interface {
-	Hit(r Ray, i Interval, rec *HitRecord) bool
+	Hit(r *Ray, i Interval, rec *HitRecord) bool
+	BBOX() *AABB
 }
 type HittableList struct {
-	List []Hittable
-}
+	Objects   []Hittable
+	BBOXField AABB
+} // pointer to hittable list implements hittable but hittable list itself does not
 
 func NewHittableList(h ...Hittable) *HittableList {
 	return &HittableList{
-		List: h,
+		Objects: h, BBOXField: NewAABB(EmptyInterval, EmptyInterval, EmptyInterval), // check this
 	}
 }
 func (hl *HittableList) Add(h Hittable) {
-	hl.List = append(hl.List, h)
+	hl.Objects = append(hl.Objects, h)
+	hl.BBOXField = MergeAABBs(&hl.BBOXField, h.BBOX())
 }
-func (hl *HittableList) Hit(r Ray, i Interval, rec *HitRecord) bool {
+func (hl *HittableList) Hit(r *Ray, i Interval, rec *HitRecord) bool {
 	var temp HitRecord
 	hitAnything := false
 	closestSoFar := i.Max
-	for _, hittableObject := range hl.List {
+	for _, hittableObject := range hl.Objects {
 		if hittableObject.Hit(r, NewInterval(i.Min, closestSoFar), &temp) {
 			hitAnything = true
 			closestSoFar = temp.T
@@ -263,41 +292,141 @@ func (hl *HittableList) Hit(r Ray, i Interval, rec *HitRecord) bool {
 	return hitAnything
 }
 
+func (hl *HittableList) BBOX() *AABB {
+	return &hl.BBOXField
+}
+
 type Sphere struct {
-	Center Vec3
-	Radius float64
-	Mat    Material
+	Center    Ray
+	Radius    float64
+	Mat       Material
+	BBOXField AABB
 }
 
 func NewSphere(c Vec3, r float64, mat Material) Sphere {
-	return Sphere{Center: c, Radius: max(0, r), Mat: mat}
+	rvec := NewVec3(r, r, r)
+	bbox := NewAABBFromPoints(c.Sub(rvec), c.Add(rvec))
+	return Sphere{Center: NewRay(c, NewVec3(0.0, 0.0, 0.0), 0), Radius: max(0, r), Mat: mat, BBOXField: bbox}
 }
 
-func (s *Sphere) Hit(r Ray, i Interval, rec *HitRecord) bool {
-	oc := r.Origin.Sub(s.Center)
-	a, b, c := r.Direction.LengthSquared(), Dot(&oc, &r.Direction), oc.LengthSquared()-(s.Radius*s.Radius)
-	discriminant := b*b - a*c
-	rec.MaterialPointer = &s.Mat
+func NewMovingSphere(c1, c2 Vec3, r float64, mat Material) Sphere {
+	center := NewRay(c1, c2.Sub(c1), 0)
+	rvec := NewVec3(r, r, r)
+	box1 := NewAABBFromPoints(center.at(0).Sub(rvec), center.at(0).Add(rvec))
+	box2 := NewAABBFromPoints(center.at(1).Sub(rvec), center.at(1).Add(rvec))
+	bbox := MergeAABBs(&box1, &box2)
+	return Sphere{Center: center, Radius: max(0, r), Mat: mat, BBOXField: bbox}
+}
+func (s *Sphere) BBOX() *AABB {
+	return &s.BBOXField
+}
+func (s *Sphere) Hit(r *Ray, i Interval, rec *HitRecord) bool {
+	currentCenter := s.Center.at(r.Time)
+	oc := currentCenter.Sub(r.Origin)
 
-	if discriminant > 0 {
-		sqrtDiscriminant := math.Sqrt(discriminant)
-		posRoot, negRoot := (-b-sqrtDiscriminant)/a, (-b+sqrtDiscriminant)/a
-		hitT := -1.0
-		if i.Surrounds(posRoot) {
-			hitT = posRoot
-		} else if i.Surrounds(negRoot) {
-			hitT = negRoot
-		}
+	a, h, c := r.Direction.LengthSquared(), Dot(&r.Direction, &oc), oc.LengthSquared()-(s.Radius*s.Radius)
+	discriminant := h*h - a*c
 
-		if hitT != -1.0 {
-			rec.T = hitT
-			rec.P = r.PointAtParameter(rec.T)
-			outwardNormal := rec.P.Sub(s.Center).Scale(1.0 / s.Radius)
-			rec.SetFaceNormal(&r, outwardNormal)
-			return true
+	if discriminant < 0 {
+		return false
+	}
+	sqrtDiscriminant := math.Sqrt(discriminant)
+
+	root := (h - sqrtDiscriminant) / a
+
+	if !i.Surrounds(root) {
+		root = (h + sqrtDiscriminant) / a
+		if !i.Surrounds(root) {
+			return false
 		}
 	}
-	return false
+
+	rec.T = root
+	rec.P = r.at(rec.T)
+	outwardNormal := rec.P.Sub(currentCenter).Scale(1.0 / s.Radius)
+	rec.SetFaceNormal(r, outwardNormal)
+	rec.MaterialPointer = &s.Mat
+
+	return true
+
+}
+
+type BVHNode struct {
+	Left, Right Hittable
+	BBOXField   AABB
+}
+
+// pointer to BVHNode implements hittable but BVHNode itself does not
+
+func BoxCompare(axisIndex int, a, b Hittable) bool {
+	if a.BBOX() == nil || b.BBOX() == nil {
+		fmt.Printf("boxcomparefailed")
+		return false
+	}
+	// compares min of chosen axis of a and b
+	return a.BBOX().axisInterval(axisIndex).Min < b.BBOX().axisInterval(axisIndex).Min
+}
+
+func NewBVHNode(objects []Hittable, start, end int) *BVHNode {
+
+	bbox := NewAABB(EmptyInterval, EmptyInterval, EmptyInterval)
+
+	for objectIndex := start; objectIndex < end; objectIndex++ {
+		bbox = MergeAABBs(&bbox, objects[objectIndex].BBOX())
+	}
+
+	subList := make([]Hittable, end-start)
+	copy(subList, objects[start:end])
+
+	var leftNode, rightNode Hittable
+	span := end - start
+	switch span {
+	case 1:
+		leftNode = objects[start]
+		rightNode = objects[start]
+	case 2:
+		leftNode = objects[start]
+		rightNode = objects[start+1]
+	default:
+		sort.Slice(subList, func(i, j int) bool {
+			// pick a longest axis to compare
+			return BoxCompare(bbox.LongestAxis(), subList[i], subList[j])
+		})
+		mid := start + span/2
+		leftNode = NewBVHNode(objects, start, mid)
+		rightNode = NewBVHNode(objects, mid, end)
+	}
+	return &BVHNode{
+		Left:      leftNode,
+		Right:     rightNode,
+		BBOXField: bbox,
+	}
+
+}
+
+func NewBVHNodeFromList(list HittableList) *BVHNode {
+	return NewBVHNode(list.Objects, 0, len(list.Objects))
+}
+
+func (n *BVHNode) BBOX() *AABB {
+	return &n.BBOXField
+}
+
+func (n *BVHNode) Hit(r *Ray, i Interval, rec *HitRecord) bool {
+	if !n.BBOXField.Hit(r, i) {
+		return false
+	}
+	hitLeft := n.Left.Hit(r, i, rec)
+	var hitT float64
+	if hitLeft {
+		hitT = rec.T
+	} else {
+		hitT = i.Max
+	}
+	hitRight := n.Right.Hit(r, NewInterval(i.Min, hitT), rec)
+
+	return hitLeft || hitRight
+
 }
 
 type Camera struct {
@@ -380,12 +509,12 @@ func (c *Camera) GetRay(i, j float64) Ray {
 		rayOrigin = c.defocusDiskSample()
 	}
 	rayDirection := pixelSample.Sub(rayOrigin)
-	return NewRay(rayOrigin, rayDirection)
+	return NewRay(rayOrigin, rayDirection, rand.Float64())
 }
 func (c *Camera) Render(world Hittable) {
 
 	c.InitCamera()
-	initImage(c.ImageWidth, c.ImageHeight)
+	InitImage(c.ImageWidth, c.ImageHeight)
 	lastPercent := -1
 	for i := 0; i < c.ImageHeight; i++ {
 		for j := 0; j < c.ImageWidth; j++ {
@@ -432,7 +561,7 @@ func (l *Lambertian) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scatte
 	if scatterDirection.NearZero() {
 		scatterDirection = rec.Normal
 	}
-	*scattered = NewRay(rec.P, scatterDirection)
+	*scattered = NewRay(rec.P, scatterDirection, rIn.Time)
 	*attenuation = l.Albedo
 	return true
 }
@@ -448,7 +577,7 @@ func NewMetal(albedo Vec3, fuzz float64) Metal {
 func (m *Metal) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool {
 	reflected := Reflect(&rIn.Direction, &rec.Normal)
 	reflected = reflected.GetUnitVec().Add(RandomUnitVector().Scale(m.Fuzz))
-	*scattered = NewRay(rec.P, reflected)
+	*scattered = NewRay(rec.P, reflected, rIn.Time)
 	*attenuation = m.Albedo
 	return Dot(&scattered.Direction, &rec.Normal) > 0
 }
@@ -483,18 +612,100 @@ func (d *Dielectric) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scatte
 	} else {
 		direction = Refract(&unitDirection, &rec.Normal, ri)
 	}
-	*scattered = NewRay(rec.P, direction)
+	*scattered = NewRay(rec.P, direction, rIn.Time)
 
 	return true
 }
 
-func initImage(w, h int) {
+type AABB struct { // axis-aligned bounding box
+	X, Y, Z Interval
+}
+
+func NewAABB(x, y, z Interval) AABB {
+	return AABB{X: x, Y: y, Z: z}
+}
+func NewAABBFromPoints(a, b Vec3) AABB {
+	var x, y, z Interval
+	if a.X <= b.X {
+		x = NewInterval(a.X, b.X)
+	} else {
+		x = NewInterval(b.X, a.X)
+	}
+	if a.Y <= b.Y {
+		y = NewInterval(a.Y, b.Y)
+	} else {
+		y = NewInterval(b.Y, a.Y)
+	}
+	if a.Z <= b.Z {
+		z = NewInterval(a.Z, b.Z)
+	} else {
+		z = NewInterval(b.Z, a.Z)
+	}
+	return AABB{X: x, Y: y, Z: z}
+}
+
+func MergeAABBs(b0, b1 *AABB) AABB {
+
+	return NewAABB(NewEnclosingInterval(&b0.X, &b1.X), NewEnclosingInterval(&b0.Y, &b1.Y), NewEnclosingInterval(&b0.Z, &b1.Z))
+}
+
+func (aabb *AABB) axisInterval(n int) *Interval {
+	if n == 1 {
+		return &aabb.Y
+	}
+	if n == 2 {
+		return &aabb.Z
+	}
+	return &aabb.X
+}
+
+func (aabb *AABB) Hit(r *Ray, i Interval) bool {
+
+	for axis := 0; axis < 3; axis++ {
+		ax := aabb.axisInterval(axis)
+		adinv := 1.0 / r.Direction.GetDim(axis)
+		t0 := (ax.Min - r.Origin.GetDim(axis)) * adinv
+		t1 := (ax.Max - r.Origin.GetDim(axis)) * adinv
+
+		if t0 < t1 {
+			i.Min = max(t0, i.Min)
+			i.Max = min(t1, i.Max)
+		} else {
+			i.Min = max(t1, i.Min)
+			i.Max = min(t0, i.Max)
+		}
+
+		if i.Max <= i.Min {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (aabb *AABB) LongestAxis() int {
+	return ArgMax(aabb.X.Size(), aabb.Y.Size(), aabb.Z.Size())
+}
+
+func InitImage(w, h int) {
 	f, err := os.Create("out.ppm")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer f.Close()
 	fmt.Fprintf(f, "P3\n%d %d\n255\n", w, h)
+}
+
+func ArgMax(sizes ...float64) int {
+	maxIndex := 0
+	maxValue := sizes[0]
+	for i, v := range sizes[1:] {
+		if v > maxValue {
+			maxIndex = i + 1
+			maxValue = v
+		}
+	}
+	return maxIndex
 }
 
 func main() {
@@ -535,8 +746,9 @@ func main() {
 			if center.Sub(NewVec3(4, 0.2, 0.0)).Length() > 0.9 {
 				if chooseMat < 0.8 {
 					albedo := NewVec3(rand.Float64(), rand.Float64(), rand.Float64()).Mul(NewVec3(rand.Float64(), rand.Float64(), rand.Float64()))
+					center2 := center.Add(NewVec3(0.0, rand.Float64()*0.5, 0.0))
 					sM := NewLambertian(albedo)
-					sN := NewSphere(center, 0.2, &sM)
+					sN := NewMovingSphere(center, center2, 0.2, &sM)
 					world.Add(&sN)
 				} else if chooseMat < 0.95 {
 					albedo := NewVec3(rand.Float64()*0.5+0.5, rand.Float64()*0.5+0.5, rand.Float64()*0.5+0.5)
@@ -550,7 +762,6 @@ func main() {
 					world.Add(&sN)
 				}
 			}
-
 		}
 	}
 
@@ -565,12 +776,13 @@ func main() {
 	mat3 := NewMetal(NewVec3(0.7, 0.6, 0.5), 0.0)
 	s4 := NewSphere(NewVec3(4.0, 1.0, 0.0), 1.0, &mat3)
 	world.Add(&s4)
+	world = NewHittableList(NewBVHNodeFromList(*world))
 
 	cam := NewCamera()
 	cam.AspectRatio = 16.0 / 9.0
-	cam.ImageWidth = 1200
+	cam.ImageWidth = 400
 	cam.MaxDepth = 50
-	cam.SamplesPerPixel = 500
+	cam.SamplesPerPixel = 50
 
 	cam.VFov = 20
 	cam.lookFrom = NewVec3(13.0, 2.0, 3.0)
