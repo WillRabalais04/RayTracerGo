@@ -1,1 +1,3 @@
+- reevaluate decisions made about passing by pointers vs. value 
+    - consider when pointer to type vs. when type itself implements interfaces
 - make sure all naming conventions are followed
