@@ -1,3 +1,5 @@
 - reevaluate decisions made about passing by pointers vs. value 
     - consider when pointer to type vs. when type itself implements interfaces
 - make sure all naming conventions are followed
+- get rid of unnecessary decimals passed into floats when the numbers are ints for consistency
+- maybe modify value method of texture interface to pass in pointers to floats for uv
