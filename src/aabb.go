@@ -5,7 +5,9 @@ type AABB struct { // axis-aligned bounding box
 }
 
 func NewAABB(x, y, z Interval) AABB {
-	return AABB{X: x, Y: y, Z: z}
+	box := AABB{X: x, Y: y, Z: z}
+	box.PadToMinimums()
+	return box
 }
 func NewAABBFromPoints(a, b Vec3) AABB {
 	var x, y, z Interval
@@ -63,4 +65,16 @@ func (aabb *AABB) Hit(r *Ray, i Interval) bool {
 }
 func (aabb *AABB) LongestAxis() int {
 	return ArgMax(aabb.X.Size(), aabb.Y.Size(), aabb.Z.Size())
+}
+func (aabb *AABB) PadToMinimums() {
+	delta := 0.0001
+	if aabb.X.Size() < delta {
+		aabb.X.Expand(delta)
+	}
+	if aabb.Y.Size() < delta {
+		aabb.Y.Expand(delta)
+	}
+	if aabb.Z.Size() < delta {
+		aabb.Z.Expand(delta)
+	}
 }

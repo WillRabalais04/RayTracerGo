@@ -56,8 +56,8 @@ func (c *Camera) InitCamera() {
 	viewPortWidth := viewPortHeight * (float64(c.ImageWidth) / float64(c.ImageHeight))
 
 	c.w = (c.lookFrom.Sub(c.lookAt)).GetUnitVec()
-	c.u = (Cross(c.vup, c.w)).GetUnitVec()
-	c.v = Cross(c.w, c.u)
+	c.u = (Cross(&c.vup, &c.w)).GetUnitVec()
+	c.v = Cross(&c.w, &c.u)
 
 	viewPortU := c.u.Scale(viewPortWidth)
 	viewPortV := ((c.v).Negate()).Scale(viewPortHeight)

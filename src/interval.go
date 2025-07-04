@@ -33,8 +33,9 @@ func (i *Interval) Clamp(x float64) float64 {
 	}
 	return x
 }
-func (i *Interval) Expand(delta float64) Interval {
-	return NewInterval(i.Min-(delta/2), i.Max+(delta/2))
+func (i *Interval) Expand(delta float64) {
+	i.Min -= delta / 2
+	i.Max += delta / 2
 }
 func NewEnclosingInterval(a, b *Interval) Interval {
 	return Interval{Min: min(a.Min, b.Min), Max: max(a.Max, b.Max)}

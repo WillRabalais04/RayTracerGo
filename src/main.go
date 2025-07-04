@@ -8,8 +8,8 @@ import (
 func main() {
 
 	cam := NewCamera()
-	cam.CamConfig6()
-	world := World6()
+	cam.CamConfig7()
+	world := World7()
 	cam.Render(&world)
 
 }
@@ -112,6 +112,22 @@ func World6() HittableList { // perlin noise
 	return *NewHittableList(&s1, &s2)
 
 }
+func World7() HittableList { // perlin noise
+	leftRed := NewLambertian(NewVec3(1.0, 0.2, 0.2))
+	backGreen := NewLambertian(NewVec3(0.2, 1.0, 0.2))
+	rightBlue := NewLambertian(NewVec3(0.2, 0.2, 1.0))
+	upperOrange := NewLambertian(NewVec3(1.0, 0.5, 0.0))
+	lowerTeal := NewLambertian(NewVec3(0.2, 0.8, 0.8))
+
+	q1 := NewQuad(NewVec3(-3, -2, 5), NewVec3(0, 0, -4), NewVec3(0, 4, 0), &leftRed)
+	q2 := NewQuad(NewVec3(-2, -2, 0), NewVec3(4, 0, 0), NewVec3(0, 4, 0), &backGreen)
+	q3 := NewQuad(NewVec3(3, -2, 1), NewVec3(0, 0, 4), NewVec3(0, 4, 0), &rightBlue)
+	q4 := NewQuad(NewVec3(-2, 3, 1), NewVec3(4, 0, 0), NewVec3(0, 0, 4), &upperOrange)
+	q5 := NewQuad(NewVec3(-2, -3, 5), NewVec3(4, 0, 0), NewVec3(0, 0, -4), &lowerTeal)
+
+	return *NewHittableList(&q1, &q2, &q3, &q4, &q5)
+
+}
 func (c *Camera) CamConfig1() {
 	c.AspectRatio = 16.0 / 9.0
 	c.ImageWidth = 400
@@ -183,7 +199,6 @@ func (c *Camera) CamConfig5() {
 	c.vup = NewVec3(0, 1, 0)
 
 	c.defocusAngle = 0.0
-	// c.focusDistance = 10.0
 }
 
 func (c *Camera) CamConfig6() {
@@ -195,6 +210,20 @@ func (c *Camera) CamConfig6() {
 	c.VFov = 20
 	c.lookFrom = NewVec3(13, 2, 3)
 	c.lookAt = NewVec3(0, 2, 0)
+	c.vup = NewVec3(0, 1, 0)
+
+	c.defocusAngle = 0.0
+}
+
+func (c *Camera) CamConfig7() {
+	c.AspectRatio = 1.0
+	c.ImageWidth = 400
+	c.MaxDepth = 50
+	c.SamplesPerPixel = 100
+
+	c.VFov = 80
+	c.lookFrom = NewVec3(0, 0, 9)
+	c.lookAt = NewVec3(0, 0, 0)
 	c.vup = NewVec3(0, 1, 0)
 
 	c.defocusAngle = 0.0
