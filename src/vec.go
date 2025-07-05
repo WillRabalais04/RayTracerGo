@@ -106,6 +106,17 @@ func (v *Vec3) GetDim(i int) float64 {
 
 	return -1.0
 }
+func (v *Vec3) SetDim(i int, val float64) {
+	if i == 0 {
+		v.X = val
+	}
+	if i == 1 {
+		v.Y = val
+	}
+	if i == 2 {
+		v.Z = val
+	}
+}
 
 func Reflect(v, n *Vec3) Vec3 {
 	return v.Sub(n.Scale(2 * Dot(v, n)))

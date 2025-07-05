@@ -37,14 +37,6 @@ func LinearToGamma(linearComponent float64) float64 {
 	}
 	return 0
 }
-func BoxCompare(axisIndex int, a, b Hittable) bool {
-	if a.BBOX() == nil || b.BBOX() == nil {
-		fmt.Printf("boxcomparefailed")
-		return false
-	}
-	// compares min of chosen axis of a and b
-	return a.BBOX().axisInterval(axisIndex).Min < b.BBOX().axisInterval(axisIndex).Min
-}
 func DegreesToRadians(degrees float64) float64 {
 	return degrees * math.Pi / 180
 }

@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type AABB struct { // axis-aligned bounding box
 	X, Y, Z Interval
 }
@@ -66,6 +68,15 @@ func (aabb *AABB) Hit(r *Ray, i Interval) bool {
 func (aabb *AABB) LongestAxis() int {
 	return ArgMax(aabb.X.Size(), aabb.Y.Size(), aabb.Z.Size())
 }
+
+func BoxCompare(axisIndex int, a, b Hittable) bool {
+	if a.BBOX() == nil || b.BBOX() == nil {
+		fmt.Printf("boxcomparefailed")
+		return false
+	}
+	// compares min of chosen axis of a and b
+	return a.BBOX().axisInterval(axisIndex).Min < b.BBOX().axisInterval(axisIndex).Min
+}
 func (aabb *AABB) PadToMinimums() {
 	delta := 0.0001
 	if aabb.X.Size() < delta {
@@ -77,4 +88,8 @@ func (aabb *AABB) PadToMinimums() {
 	if aabb.Z.Size() < delta {
 		aabb.Z.Expand(delta)
 	}
+}
+
+func (aabb *AABB) ShiftAABB(offset *Vec3) AABB {
+	return NewAABB(aabb.X.ShiftInterval(offset.X), aabb.Y.ShiftInterval(offset.Y), aabb.Z.ShiftInterval(offset.Z))
 }

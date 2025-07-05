@@ -14,20 +14,21 @@ type Camera struct {
 	AspectRatio       float64
 	PixelSamplesScale float64
 	VFov              float64
-	defocusAngle      float64
-	focusDistance     float64
+	DefocusAngle      float64
+	FocusDistance     float64
 	Center            Vec3
 	PixelDeltaU       Vec3
 	PixelDeltaV       Vec3
 	Pixel00Loc        Vec3
-	lookFrom          Vec3
-	lookAt            Vec3
-	vup               Vec3
-	u                 Vec3
-	v                 Vec3
-	w                 Vec3
-	defocusDiskU      Vec3
-	defocusDiskV      Vec3
+	LookFrom          Vec3
+	LookAt            Vec3
+	VUP               Vec3
+	U                 Vec3
+	V                 Vec3
+	W                 Vec3
+	DefocusDiskU      Vec3
+	DefocusDiskV      Vec3
+	Background        Vec3
 }
 
 func NewCamera() Camera {
@@ -37,38 +38,38 @@ func NewCamera() Camera {
 		MaxDepth:        50,
 		AspectRatio:     1.0,
 		VFov:            90,
-		defocusAngle:    0,
-		focusDistance:   10,
-		lookFrom:        NewVec3(0.0, 0.0, 0.0),
-		lookAt:          NewVec3(0.0, 0.0, -1.0),
-		vup:             NewVec3(0.0, 1.0, 0.0),
+		DefocusAngle:    0,
+		FocusDistance:   10,
+		LookFrom:        NewVec3(0.0, 0.0, 0.0),
+		LookAt:          NewVec3(0.0, 0.0, -1.0),
+		VUP:             NewVec3(0.0, 1.0, 0.0),
 	}
 }
 func (c *Camera) InitCamera() {
 	c.ImageHeight = max(int(float64(c.ImageWidth)/c.AspectRatio), 1)
-	c.Center = c.lookFrom
+	c.Center = c.LookFrom
 	c.PixelSamplesScale = 1.0 / float64(c.SamplesPerPixel)
 
 	theta := DegreesToRadians(c.VFov)
 	h := math.Tan(theta / 2)
 
-	viewPortHeight := 2.0 * h * c.focusDistance
+	viewPortHeight := 2.0 * h * c.FocusDistance
 	viewPortWidth := viewPortHeight * (float64(c.ImageWidth) / float64(c.ImageHeight))
 
-	c.w = (c.lookFrom.Sub(c.lookAt)).GetUnitVec()
-	c.u = (Cross(&c.vup, &c.w)).GetUnitVec()
-	c.v = Cross(&c.w, &c.u)
+	c.W = (c.LookFrom.Sub(c.LookAt)).GetUnitVec()
+	c.U = (Cross(&c.VUP, &c.W)).GetUnitVec()
+	c.V = Cross(&c.W, &c.U)
 
-	viewPortU := c.u.Scale(viewPortWidth)
-	viewPortV := ((c.v).Negate()).Scale(viewPortHeight)
+	viewPortU := c.U.Scale(viewPortWidth)
+	viewPortV := ((c.V).Negate()).Scale(viewPortHeight)
 
 	c.PixelDeltaU, c.PixelDeltaV = viewPortU.Scale(1.0/float64(c.ImageWidth)), viewPortV.Scale(1.0/float64(c.ImageHeight))
-	viewPortUpperLeft := c.Center.Sub(c.w.Scale(c.focusDistance)).Sub(viewPortU.Scale(0.5)).Sub(viewPortV.Scale(0.5)) // center - <0,0,focal length> - (viewportU / 2) - (viewportV / 2)
+	viewPortUpperLeft := c.Center.Sub(c.W.Scale(c.FocusDistance)).Sub(viewPortU.Scale(0.5)).Sub(viewPortV.Scale(0.5)) // center - <0,0,focal length> - (viewportU / 2) - (viewportV / 2)
 	c.Pixel00Loc = viewPortUpperLeft.Add((c.PixelDeltaU.Add(c.PixelDeltaV)).Scale(0.5))
 	// viewPortUpperLeft + 0.5*(PixelDeltaU + PixelDeltaV)
-	defocusRadius := c.focusDistance * math.Tan(DegreesToRadians(c.defocusAngle/2))
-	c.defocusDiskU = c.u.Scale(defocusRadius)
-	c.defocusDiskV = c.v.Scale(defocusRadius)
+	defocusRadius := c.FocusDistance * math.Tan(DegreesToRadians(c.DefocusAngle/2))
+	c.DefocusDiskU = c.U.Scale(defocusRadius)
+	c.DefocusDiskV = c.V.Scale(defocusRadius)
 
 }
 func (c *Camera) GetRay(i, j float64) Ray {
@@ -76,7 +77,7 @@ func (c *Camera) GetRay(i, j float64) Ray {
 	pixelSample := c.Pixel00Loc.Add(c.PixelDeltaU.Scale(i + offset.X).Add(c.PixelDeltaV.Scale(j + offset.Y)))
 
 	var rayOrigin Vec3
-	if c.defocusAngle <= 0 {
+	if c.DefocusAngle <= 0 {
 		rayOrigin = c.Center
 	} else {
 		rayOrigin = c.defocusDiskSample()
@@ -90,21 +91,20 @@ func (c *Camera) RayColor(r Ray, depth int, world Hittable) Vec3 {
 	}
 
 	var rec HitRecord
-	if world.Hit(&r, NewInterval(0.001, math.MaxFloat64), &rec) {
-		var scattered Ray
-		var attenuation Vec3
-
-		if rec.MaterialPointer != nil && (*rec.MaterialPointer).Scatter(&r, &rec, &attenuation, &scattered) {
-			return attenuation.Mul(c.RayColor(scattered, depth-1, world))
-		}
-		return NewVec3(0, 0, 0)
+	if !world.Hit(&r, NewInterval(0.001, math.MaxFloat64), &rec) {
+		return c.Background
 	}
 
-	// if not hit it renders the background color
-	unitDirection := r.Direction.GetUnitVec()
-	t := 0.5 * (unitDirection.Y + 1.0)
-	// ((1-t) * <1,1,1>) + (t * <0.5,0.7,1>)
-	return (NewVec3(1.0, 1.0, 1.0).Scale(1.0 - t)).Add((NewVec3(0.5, 0.7, 1.0).Scale(t)))
+	var scattered Ray
+	var attenuation Vec3
+	colorFromEmission := (*rec.MaterialPointer).Emitted(rec.U, rec.V, &rec.P)
+
+	if !(*rec.MaterialPointer).Scatter(&r, &rec, &attenuation, &scattered) {
+		return colorFromEmission
+	}
+	colorFromScatter := attenuation.Mul(c.RayColor(scattered, depth-1, world))
+
+	return colorFromEmission.Add(colorFromScatter)
 }
 func (c *Camera) Render(world Hittable) {
 	c.InitCamera()
@@ -128,5 +128,5 @@ func (c *Camera) Render(world Hittable) {
 }
 func (c *Camera) defocusDiskSample() Vec3 {
 	p := RandomInUnitDisk()
-	return c.Center.Add(c.defocusDiskU.Scale(p.X).Add(c.defocusDiskV.Scale(p.Y)))
+	return c.Center.Add(c.DefocusDiskU.Scale(p.X).Add(c.DefocusDiskV.Scale(p.Y)))
 }

@@ -40,3 +40,7 @@ func (i *Interval) Expand(delta float64) {
 func NewEnclosingInterval(a, b *Interval) Interval {
 	return Interval{Min: min(a.Min, b.Min), Max: max(a.Max, b.Max)}
 }
+
+func (i *Interval) ShiftInterval(shiftAmt float64) Interval {
+	return NewInterval(i.Min+shiftAmt, i.Max+shiftAmt)
+}
