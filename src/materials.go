@@ -24,13 +24,12 @@ type Material interface {
 }
 
 type Lambertian struct {
-	NoEmittable
 	Tex Texture
+	NoEmittable
 }
 
-func NewLambertian(albedo Vec3) Lambertian {
-	t := NewSolidColor(albedo)
-	return Lambertian{Tex: &t}
+func NewLambertian(albedo *Vec3) Lambertian {
+	return Lambertian{Tex: NewSolidColor(albedo)}
 }
 func NewLambertianFromTexture(t Texture) Lambertian {
 	return Lambertian{Tex: t}
@@ -46,9 +45,9 @@ func (l *Lambertian) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scatte
 }
 
 type Metal struct {
-	NoEmittable
 	Albedo Vec3
 	Fuzz   float64
+	NoEmittable
 }
 
 func NewMetal(albedo Vec3, fuzz float64) Metal {
@@ -63,8 +62,8 @@ func (m *Metal) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *
 }
 
 type Dielectric struct {
-	NoEmittable
 	RefractionIndex float64
+	NoEmittable
 }
 
 func NewDielectric(ri float64) Dielectric {
@@ -99,13 +98,12 @@ func (d *Dielectric) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scatte
 }
 
 type DiffuseLight struct {
-	NoScatter
 	Tex Texture
+	NoScatter
 }
 
-func NewDiffuseLight(emit Vec3) DiffuseLight {
-	t := NewSolidColor(emit)
-	return DiffuseLight{Tex: &t}
+func NewDiffuseLight(emit *Vec3) DiffuseLight {
+	return DiffuseLight{Tex: NewSolidColor(emit)}
 }
 
 func NewDiffuseLightFromTexture(t Texture) DiffuseLight {
@@ -114,4 +112,24 @@ func NewDiffuseLightFromTexture(t Texture) DiffuseLight {
 
 func (d *DiffuseLight) Emitted(u, v float64, p *Vec3) Vec3 {
 	return d.Tex.Value(u, v, p)
+}
+
+type Isotropic struct {
+	Tex Texture
+	NoEmittable
+}
+
+func NewIsotropic(albedo *Vec3) Isotropic {
+	t := NewSolidColor(albedo)
+	return Isotropic{Tex: t}
+}
+
+func NewIsotropicFromTexture(t *Texture) Isotropic {
+	return Isotropic{Tex: *t}
+}
+
+func (i *Isotropic) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool {
+	*scattered = NewRay(rec.P, RandomUnitVector(), rIn.Time)
+	*attenuation = i.Tex.Value(rec.U, rec.V, &rec.P)
+	return true
 }

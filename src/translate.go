@@ -37,7 +37,7 @@ func NewRotateY(object Hittable, angle float64) *RotateY {
 	cosTheta := math.Cos(DegreesToRadians(angle))
 	bbox := object.BBOX()
 
-	minPoint, maxPoint := NewVec3(-math.MaxFloat64, -math.MaxFloat64, -math.MaxFloat64), NewVec3(math.MaxFloat64, math.MaxFloat64, math.MaxFloat64)
+	minPoint, maxPoint := NewVec3(math.Inf(-1), math.Inf(-1), math.Inf(-1)), NewVec3(math.Inf(1), math.Inf(1), math.Inf(1))
 
 	for i := 0; i < 2; i++ {
 		for j := 0; j < 2; j++ {

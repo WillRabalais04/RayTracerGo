@@ -91,7 +91,7 @@ func (c *Camera) RayColor(r Ray, depth int, world Hittable) Vec3 {
 	}
 
 	var rec HitRecord
-	if !world.Hit(&r, NewInterval(0.001, math.MaxFloat64), &rec) {
+	if !world.Hit(&r, NewInterval(0.001, math.Inf(1)), &rec) {
 		return c.Background
 	}
 
