@@ -189,7 +189,6 @@ func World10() HittableList { // in a weekend final output
 			boxes1.Add(NewBox(NewVec3(x0, y0, z0), NewVec3(x1, y1, z1), &ground))
 		}
 	}
-
 	world := NewHittableList(NewBVHNodeFromList(boxes1))
 	light := NewDiffuseLight(NewVec3Pointer(7, 7, 7))
 	q1 := NewQuad(NewVec3(123, 554, 147), NewVec3(300, 0, 0), NewVec3(0, 0, 265), &light)
@@ -215,14 +214,19 @@ func World10() HittableList { // in a weekend final output
 	m1 := NewConstantMediumFromColor(&boundary, 0.2, (NewVec3Pointer(0.2, 0.4, 0.9)))
 	world.Add(&m1)
 
-	boundary = NewSphere(NewVec3(0, 0, 0), 5000, &sphereMaterial2)
-	m2 := NewConstantMediumFromColor(&boundary, 0.0001, (NewVec3Pointer(1, 1, 1)))
+	boundary2 := NewSphere(NewVec3(0, 0, 0), 5000, &sphereMaterial2)
+	m2 := NewConstantMediumFromColor(&boundary2, 0.0001, (NewVec3Pointer(1, 1, 1)))
 	world.Add(&m2)
 
 	earthTexture := NewImageTexture("../textures/earthmap.jpg")
 	earthSurface := NewLambertianFromTexture(earthTexture)
 	s4 := NewSphere(NewVec3(400, 200, 400), 100, &earthSurface)
 	world.Add(&s4)
+
+	perlinTexture := NewNoiseTexture(0.2)
+	perlinMaterial := NewLambertianFromTexture(&perlinTexture)
+	s5 := NewSphere(NewVec3(220, 280, 300), 80, &perlinMaterial)
+	world.Add(&s5)
 
 	var boxes2 HittableList
 
@@ -383,9 +387,9 @@ func (c *Camera) CamConfig9() {
 
 func (c *Camera) CamConfig10() {
 	c.AspectRatio = 1.0
-	c.ImageWidth = 200
-	c.MaxDepth = 50
-	c.SamplesPerPixel = 50
+	c.ImageWidth = 800
+	c.MaxDepth = 4
+	c.SamplesPerPixel = 1000
 
 	c.VFov = 40
 	c.LookFrom = NewVec3(478, 278, -600)
