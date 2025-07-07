@@ -40,9 +40,9 @@ func NewCamera() Camera {
 		VFov:            90,
 		DefocusAngle:    0,
 		FocusDistance:   10,
-		LookFrom:        NewVec3(0.0, 0.0, 0.0),
-		LookAt:          NewVec3(0.0, 0.0, -1.0),
-		VUP:             NewVec3(0.0, 1.0, 0.0),
+		LookFrom:        NewVec3(0, 0, 0),
+		LookAt:          NewVec3(0, 0, -1),
+		VUP:             NewVec3(0, 1, 0),
 	}
 }
 func (c *Camera) InitCamera() {
@@ -66,7 +66,6 @@ func (c *Camera) InitCamera() {
 	c.PixelDeltaU, c.PixelDeltaV = viewPortU.Scale(1.0/float64(c.ImageWidth)), viewPortV.Scale(1.0/float64(c.ImageHeight))
 	viewPortUpperLeft := c.Center.Sub(c.W.Scale(c.FocusDistance)).Sub(viewPortU.Scale(0.5)).Sub(viewPortV.Scale(0.5)) // center - <0,0,focal length> - (viewportU / 2) - (viewportV / 2)
 	c.Pixel00Loc = viewPortUpperLeft.Add((c.PixelDeltaU.Add(c.PixelDeltaV)).Scale(0.5))
-	// viewPortUpperLeft + 0.5*(PixelDeltaU + PixelDeltaV)
 	defocusRadius := c.FocusDistance * math.Tan(DegreesToRadians(c.DefocusAngle/2))
 	c.DefocusDiskU = c.U.Scale(defocusRadius)
 	c.DefocusDiskV = c.V.Scale(defocusRadius)

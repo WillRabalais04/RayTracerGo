@@ -19,11 +19,13 @@ type SolidColor struct {
 	Albedo Vec3
 }
 
-func NewSolidColor(albedo *Vec3) *SolidColor {
-	return &SolidColor{Albedo: *albedo}
+func NewSolidColor(albedo *Vec3) *Texture {
+	t := Texture(&SolidColor{Albedo: *albedo})
+	return &t
 }
-func NewSolidColorFromRGB(r, g, b float64) *SolidColor {
-	return NewSolidColor(NewVec3Pointer(r, g, b))
+func NewSolidColorFromRGB(r, g, b float64) *Texture {
+	t := Texture(&SolidColor{Albedo: NewVec3(r, g, b)})
+	return &t
 }
 func (c *SolidColor) Value(u, v float64, p *Vec3) Vec3 {
 	return c.Albedo
@@ -35,13 +37,14 @@ type CheckeredTexture struct {
 	Odd      Texture
 }
 
-func NewCheckeredTexture(scale float64, even, odd Texture) CheckeredTexture {
-	return CheckeredTexture{InvScale: 1.0 / scale, Even: even, Odd: odd}
+func NewCheckeredTexture(scale float64, even, odd Texture) *Texture {
+	t := Texture(&CheckeredTexture{InvScale: 1.0 / scale, Even: even, Odd: odd})
+	return &t
 }
 
-func NewCheckeredTextureFromColors(scale float64, c1, c2 Vec3) CheckeredTexture {
-	t1, t2 := NewSolidColor(&c1), NewSolidColor(&c2)
-	return NewCheckeredTexture(scale, t1, t2)
+func NewCheckeredTextureFromColors(scale float64, c1, c2 Vec3) *Texture {
+	t := Texture(&CheckeredTexture{InvScale: 1.0 / scale, Even: *NewSolidColor(&c1), Odd: *NewSolidColor(&c2)})
+	return &t
 }
 func (t *CheckeredTexture) Value(u, v float64, p *Vec3) Vec3 {
 	isEven := int((math.Floor(t.InvScale*p.X)+math.Floor(t.InvScale*p.Y)+math.Floor(t.InvScale*p.Z)))%2 == 0
@@ -54,12 +57,13 @@ func (t *CheckeredTexture) Value(u, v float64, p *Vec3) Vec3 {
 }
 
 type NoiseTexture struct {
-	Noise PerlinNoise
+	Noise *PerlinNoise
 	Scale float64
 }
 
-func NewNoiseTexture(scale float64) NoiseTexture {
-	return NoiseTexture{Noise: NewPerlinNoise(), Scale: scale}
+func NewNoiseTexture(scale float64) *Texture {
+	t := Texture(&NoiseTexture{Noise: NewPerlinNoise(), Scale: scale})
+	return &t
 }
 
 func (t *NoiseTexture) Value(u, v float64, p *Vec3) Vec3 {
@@ -92,7 +96,7 @@ type LoadedImage struct {
 	Width, Height int
 }
 
-func NewImageTexture(filename string) *ImageTexture {
+func NewImageTexture(filename string) *Texture {
 	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatal(err)
@@ -123,8 +127,8 @@ func NewImageTexture(filename string) *ImageTexture {
 			tex.img.Pixels[i+2] = SrgbToLinear(c.B)
 		}
 	}
-	return &tex
-
+	t := Texture(&tex)
+	return &t
 }
 
 func (t *LoadedImage) PixelData(x, y float64) (r, g, b float64) {

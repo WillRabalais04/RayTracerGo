@@ -28,11 +28,13 @@ type Lambertian struct {
 	NoEmittable
 }
 
-func NewLambertian(albedo *Vec3) Lambertian {
-	return Lambertian{Tex: NewSolidColor(albedo)}
+func NewLambertian(albedo *Vec3) *Material {
+	m := Material(&Lambertian{Tex: *NewSolidColor(albedo)})
+	return &m
 }
-func NewLambertianFromTexture(t Texture) Lambertian {
-	return Lambertian{Tex: t}
+func NewLambertianFromTexture(t *Texture) *Material {
+	m := Material(&Lambertian{Tex: *t})
+	return &m
 }
 func (l *Lambertian) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool {
 	scatterDirection := rec.Normal.Add(RandomUnitVector())
@@ -50,8 +52,9 @@ type Metal struct {
 	NoEmittable
 }
 
-func NewMetal(albedo Vec3, fuzz float64) Metal {
-	return Metal{Albedo: albedo, Fuzz: min(1, fuzz)}
+func NewMetal(albedo Vec3, fuzz float64) *Material {
+	m := Material(&Metal{Albedo: albedo, Fuzz: min(1, fuzz)})
+	return &m
 }
 func (m *Metal) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool {
 	reflected := Reflect(&rIn.Direction, &rec.Normal)
@@ -66,8 +69,9 @@ type Dielectric struct {
 	NoEmittable
 }
 
-func NewDielectric(ri float64) Dielectric {
-	return Dielectric{RefractionIndex: ri}
+func NewDielectric(ri float64) *Material {
+	m := Material(&Dielectric{RefractionIndex: ri})
+	return &m
 }
 func (d *Dielectric) Reflectance(cosine, refractionIndex float64) float64 {
 	r0 := math.Pow(((1 - refractionIndex) / (1 + refractionIndex)), 2)
@@ -102,12 +106,13 @@ type DiffuseLight struct {
 	NoScatter
 }
 
-func NewDiffuseLight(emit *Vec3) DiffuseLight {
-	return DiffuseLight{Tex: NewSolidColor(emit)}
+func NewDiffuseLight(t *Texture) *Material {
+	m := Material(&DiffuseLight{Tex: *t})
+	return &m
 }
-
-func NewDiffuseLightFromTexture(t Texture) DiffuseLight {
-	return DiffuseLight{Tex: t}
+func NewColoredDiffuseLight(emit *Vec3) *Material {
+	m := Material(&DiffuseLight{Tex: Texture(*NewSolidColor(emit))})
+	return &m
 }
 
 func (d *DiffuseLight) Emitted(u, v float64, p *Vec3) Vec3 {
@@ -119,16 +124,17 @@ type Isotropic struct {
 	NoEmittable
 }
 
-func NewIsotropic(albedo *Vec3) Isotropic {
-	t := NewSolidColor(albedo)
-	return Isotropic{Tex: t}
+func NewIsotropic(t *Texture) *Material {
+	m := Material(&Isotropic{Tex: *t})
+	return &m
 }
 
-func NewIsotropicFromTexture(t *Texture) Isotropic {
-	return Isotropic{Tex: *t}
+func NewColoredIsotropic(albedo *Vec3) *Material {
+	m := Material(&Isotropic{Tex: Texture(*NewSolidColor(albedo))})
+	return &m
 }
 
-func (i *Isotropic) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool {
+func (i Isotropic) Scatter(rIn *Ray, rec *HitRecord, attenuation *Vec3, scattered *Ray) bool {
 	*scattered = NewRay(rec.P, RandomUnitVector(), rIn.Time)
 	*attenuation = i.Tex.Value(rec.U, rec.V, &rec.P)
 	return true

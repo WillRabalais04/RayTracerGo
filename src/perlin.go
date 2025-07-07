@@ -11,7 +11,7 @@ type PerlinNoise struct {
 	RandVecs            []Vec3
 }
 
-func NewPerlinNoise() PerlinNoise {
+func NewPerlinNoise() *PerlinNoise {
 	count := 256
 	n := PerlinNoise{
 		PointCount: count,
@@ -27,7 +27,7 @@ func NewPerlinNoise() PerlinNoise {
 	n.GeneratePerm(n.PermY)
 	n.GeneratePerm(n.PermZ)
 
-	return n
+	return &n
 
 }
 

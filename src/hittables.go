@@ -66,18 +66,18 @@ type Sphere struct {
 	BBOXField AABB
 }
 
-func NewSphere(c Vec3, r float64, mat Material) Sphere {
+func NewSphere(c Vec3, r float64, mat *Material) Sphere {
 	rvec := NewVec3(r, r, r)
 	bbox := NewAABBFromPoints(c.Sub(rvec), c.Add(rvec))
-	return Sphere{Center: NewRay(c, NewVec3(0.0, 0.0, 0.0), 0), Radius: max(0, r), Mat: mat, BBOXField: bbox}
+	return Sphere{Center: NewRay(c, NewVec3(0.0, 0.0, 0.0), 0), Radius: max(0, r), Mat: *mat, BBOXField: bbox}
 }
-func NewMovingSphere(c1, c2 Vec3, r float64, mat Material) Sphere {
+func NewMovingSphere(c1, c2 Vec3, r float64, mat *Material) Sphere {
 	center := NewRay(c1, c2.Sub(c1), 0)
 	rvec := NewVec3(r, r, r)
 	box1 := NewAABBFromPoints(center.at(0).Sub(rvec), center.at(0).Add(rvec))
 	box2 := NewAABBFromPoints(center.at(1).Sub(rvec), center.at(1).Add(rvec))
 	bbox := MergeAABBs(&box1, &box2)
-	return Sphere{Center: center, Radius: max(0, r), Mat: mat, BBOXField: bbox}
+	return Sphere{Center: center, Radius: max(0, r), Mat: *mat, BBOXField: bbox}
 }
 func (s *Sphere) Hit(r *Ray, i Interval, rec *HitRecord) bool {
 	currentCenter := s.Center.at(r.Time)
@@ -129,8 +129,8 @@ type Quad struct {
 	BBOXField          AABB
 }
 
-func NewQuad(q, u, v Vec3, m Material) Quad {
-	quad := Quad{Q: q, U: u, V: v, Mat: m}
+func NewQuad(q, u, v Vec3, m *Material) Quad {
+	quad := Quad{Q: q, U: u, V: v, Mat: *m}
 	n := Cross(&u, &v)
 	quad.Normal = n.GetUnitVec()
 	quad.D = Dot(&quad.Normal, &q)
@@ -187,7 +187,7 @@ func (q *Quad) BBOX() *AABB {
 	return &q.BBOXField
 }
 
-func NewBox(a, b Vec3, m Material) *HittableList {
+func NewBox(a, b Vec3, m *Material) *HittableList {
 
 	min := NewVec3(min(a.X, b.X), min(a.Y, b.Y), min(a.Z, b.Z))
 	max := NewVec3(max(a.X, b.X), max(a.Y, b.Y), max(a.Z, b.Z))
@@ -206,7 +206,7 @@ func NewBox(a, b Vec3, m Material) *HittableList {
 
 }
 
-func NewCornellBox(left, back, right, light Material) *HittableList {
+func NewCornellBox(left, back, right, light *Material) *HittableList {
 
 	q1 := NewQuad(NewVec3(555, 0, 0), NewVec3(0, 555, 0), NewVec3(0, 0, 555), left)
 	q2 := NewQuad(NewVec3(0, 0, 0), NewVec3(0, 555, 0), NewVec3(0, 0, 555), right)
@@ -225,14 +225,12 @@ type ConstantMedium struct {
 	BBOXField     AABB
 }
 
-func NewConstantMedium(boundary Hittable, density float64, tex *Texture) ConstantMedium {
-	t := NewIsotropicFromTexture(tex)
-	return ConstantMedium{Boundary: &boundary, NegInvDensity: -1 / density, PhaseFunction: &t}
+func NewConstantMedium(boundary Hittable, density float64, tex *Texture) *ConstantMedium {
+	return &ConstantMedium{Boundary: &boundary, NegInvDensity: -1 / density, PhaseFunction: *NewIsotropic(tex)}
 }
 
-func NewConstantMediumFromColor(boundary Hittable, density float64, c *Vec3) ConstantMedium {
-	t := NewIsotropic(c)
-	return ConstantMedium{Boundary: &boundary, NegInvDensity: -1 / density, PhaseFunction: &t}
+func NewConstantMediumFromColor(boundary Hittable, density float64, c *Vec3) *ConstantMedium {
+	return &ConstantMedium{Boundary: &boundary, NegInvDensity: -1 / density, PhaseFunction: *NewColoredIsotropic(c)}
 }
 
 func (c *ConstantMedium) Hit(r *Ray, i Interval, rec *HitRecord) bool {
