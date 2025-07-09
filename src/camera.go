@@ -36,7 +36,7 @@ func NewCamera() Camera {
 		ImageWidth:      100,
 		SamplesPerPixel: 10,
 		MaxDepth:        50,
-		AspectRatio:     1.0,
+		AspectRatio:     1,
 		VFov:            90,
 		DefocusAngle:    0,
 		FocusDistance:   10,
@@ -48,12 +48,12 @@ func NewCamera() Camera {
 func (c *Camera) InitCamera() {
 	c.ImageHeight = max(int(float64(c.ImageWidth)/c.AspectRatio), 1)
 	c.Center = c.LookFrom
-	c.PixelSamplesScale = 1.0 / float64(c.SamplesPerPixel)
+	c.PixelSamplesScale = 1 / float64(c.SamplesPerPixel)
 
 	theta := DegreesToRadians(c.VFov)
 	h := math.Tan(theta / 2)
 
-	viewPortHeight := 2.0 * h * c.FocusDistance
+	viewPortHeight := 2 * h * c.FocusDistance
 	viewPortWidth := viewPortHeight * (float64(c.ImageWidth) / float64(c.ImageHeight))
 
 	c.W = (c.LookFrom.Sub(c.LookAt)).GetUnitVec()
@@ -69,7 +69,6 @@ func (c *Camera) InitCamera() {
 	defocusRadius := c.FocusDistance * math.Tan(DegreesToRadians(c.DefocusAngle/2))
 	c.DefocusDiskU = c.U.Scale(defocusRadius)
 	c.DefocusDiskV = c.V.Scale(defocusRadius)
-
 }
 func (c *Camera) GetRay(i, j float64) Ray {
 	offset := NewBoundedRandomVec(-0.5, 0.5)
@@ -90,28 +89,28 @@ func (c *Camera) RayColor(r Ray, depth int, world Hittable) Vec3 {
 	}
 
 	var rec HitRecord
-	if !world.Hit(&r, NewInterval(0.001, math.Inf(1)), &rec) {
+	if !world.Hit(r, NewInterval(0.001, math.Inf(1)), &rec) {
 		return c.Background
 	}
 
 	var scattered Ray
 	var attenuation Vec3
-	colorFromEmission := (*rec.MaterialPointer).Emitted(rec.U, rec.V, &rec.P)
+	colorFromEmission := (*rec.MaterialPointer).Emitted(rec.U, rec.V, rec.P)
 
-	if !(*rec.MaterialPointer).Scatter(&r, &rec, &attenuation, &scattered) {
+	if !(*rec.MaterialPointer).Scatter(r, &rec, &attenuation, &scattered) {
 		return colorFromEmission
 	}
 	colorFromScatter := attenuation.Mul(c.RayColor(scattered, depth-1, world))
 
 	return colorFromEmission.Add(colorFromScatter)
 }
-func (c *Camera) Render(world Hittable) {
+func (c *Camera) Render(world *HittableList) {
 	c.InitCamera()
 	InitImage(c.ImageWidth, c.ImageHeight)
 	lastPercent := -1
-	for i := 0; i < c.ImageHeight; i++ {
-		for j := 0; j < c.ImageWidth; j++ {
-			pixelColor := NewVec3(0.0, 0.0, 0.0)
+	for i := range c.ImageHeight {
+		for j := range c.ImageWidth {
+			pixelColor := NewVec3(0, 0, 0)
 			for sample := 0; sample < c.SamplesPerPixel; sample++ {
 				r := c.GetRay(float64(j), float64(i))
 				pixelColor.PlusEq(c.RayColor(r, c.MaxDepth, world))

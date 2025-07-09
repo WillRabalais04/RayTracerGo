@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand/v2"
 	"os"
 )
 
@@ -53,9 +54,13 @@ func ArgMax(sizes ...float64) int {
 }
 
 func SrgbToLinear(c byte) float64 {
-	v := float64(c) / 255.0
+	v := float64(c) / 255
 	if v <= 0.04045 {
 		return v / 12.92
 	}
 	return (math.Pow((float64((v + 0.055) / (1.055))), 2.4))
+}
+
+func RandFloatInRange(min, max float64) float64 {
+	return min + rand.Float64()*(max-min)
 }

@@ -89,21 +89,19 @@ func (Normal *Vec3) RandomOnHemisphere() Vec3 {
 	}
 	return OnUnitSphere
 }
-func (v *Vec3) NearZero() bool {
+func (v Vec3) NearZero() bool {
 	s := 1e-8
 	return (math.Abs(v.X) < s) && math.Abs(v.Y) < s && math.Abs(v.Z) < s
 }
-func (v *Vec3) GetDim(i int) float64 {
-	if i == 0 {
+func (v *Vec3) GetDim(axis int) float64 {
+	switch axis {
+	case 0:
 		return v.X
-	}
-	if i == 1 {
+	case 1:
 		return v.Y
-	}
-	if i == 2 {
+	case 2:
 		return v.Z
 	}
-
 	return -1.0
 }
 func (v *Vec3) SetDim(i int, val float64) {
@@ -140,7 +138,7 @@ func RandomUnitVector() Vec3 {
 }
 func RandomInUnitDisk() Vec3 {
 	for {
-		p := NewVec3(rand.Float64()*2-1, rand.Float64()*2-1, rand.Float64()*2-1)
+		p := NewBoundedRandomVec(-1, 1)
 		if p.LengthSquared() < 1 {
 			return p
 		}
@@ -150,10 +148,8 @@ func NewRandomVec() Vec3 {
 	return NewVec3(rand.Float64(), rand.Float64(), rand.Float64())
 }
 func NewBoundedRandomVec(min, max float64) Vec3 {
-	r := max - min
-	return NewVec3(rand.Float64()*r+min, rand.Float64()*r+min, rand.Float64()*r+min)
+	return NewVec3(RandFloatInRange(min, max), RandFloatInRange(min, max), RandFloatInRange(min, max))
 }
-
-func (v *Vec3) PrintVec() {
+func (v Vec3) PrintVec() {
 	fmt.Printf("<%f,%f,%f>", v.X, v.Y, v.Z)
 }

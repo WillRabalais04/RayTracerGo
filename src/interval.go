@@ -8,12 +8,12 @@ type Interval struct {
 }
 
 var (
-	EmptyInterval    = Interval{Min: math.Inf(1), Max: math.Inf(-1)}
-	UniverseInterval = Interval{Min: math.Inf(-1), Max: math.Inf(1)}
+	EmptyInterval    = &Interval{Min: math.Inf(1), Max: math.Inf(-1)}
+	UniverseInterval = &Interval{Min: math.Inf(-1), Max: math.Inf(1)}
 )
 
-func NewInterval(min, max float64) Interval {
-	return Interval{Min: min, Max: max}
+func NewInterval(min, max float64) *Interval {
+	return &Interval{Min: min, Max: max}
 }
 func (i *Interval) Size() float64 {
 	return i.Max - i.Min
@@ -37,10 +37,11 @@ func (i *Interval) Expand(delta float64) {
 	i.Min -= delta / 2
 	i.Max += delta / 2
 }
-func NewEnclosingInterval(a, b *Interval) Interval {
-	return Interval{Min: min(a.Min, b.Min), Max: max(a.Max, b.Max)}
+func NewEnclosingInterval(a, b *Interval) *Interval {
+	return &Interval{Min: min(a.Min, b.Min), Max: max(a.Max, b.Max)}
 }
 
-func (i *Interval) ShiftInterval(shiftAmt float64) Interval {
-	return NewInterval(i.Min+shiftAmt, i.Max+shiftAmt)
+func (i *Interval) ShiftInterval(shiftAmt float64) {
+	i.Min += shiftAmt
+	i.Max += shiftAmt
 }

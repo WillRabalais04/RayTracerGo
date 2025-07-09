@@ -20,7 +20,7 @@ func NewPerlinNoise() *PerlinNoise {
 		PermY:      make([]int, count),
 		PermZ:      make([]int, count),
 	}
-	for i := 0; i < count; i++ {
+	for i := range count {
 		n.RandVecs[i] = (NewBoundedRandomVec(-1, 1)).GetUnitVec()
 	}
 	n.GeneratePerm(n.PermX)
@@ -28,17 +28,16 @@ func NewPerlinNoise() *PerlinNoise {
 	n.GeneratePerm(n.PermZ)
 
 	return &n
-
 }
 
-func (n *PerlinNoise) Noise(p *Vec3) float64 {
+func (n *PerlinNoise) Noise(p Vec3) float64 {
 	u, v, w := p.X-math.Floor(p.X), p.Y-math.Floor(p.Y), p.Z-math.Floor(p.Z)
 	i, j, k := int(math.Floor(p.X)), int(math.Floor(p.Y)), int(math.Floor(p.Z))
 	var c [2][2][2]Vec3
 
-	for di := 0; di < 2; di++ {
-		for dj := 0; dj < 2; dj++ {
-			for dk := 0; dk < 2; dk++ {
+	for di := range 2 {
+		for dj := range 2 {
+			for dk := range 2 {
 				c[di][dj][dk] = n.RandVecs[n.PermX[(i+di)&255]^n.PermY[(j+dj)&255]^n.PermZ[(k+dk)&255]]
 			}
 		}
@@ -47,7 +46,7 @@ func (n *PerlinNoise) Noise(p *Vec3) float64 {
 }
 
 func (n *PerlinNoise) GeneratePerm(p []int) {
-	for i := 0; i < n.PointCount; i++ {
+	for i := range n.PointCount {
 		p[i] = i
 	}
 	Permute(p, n.PointCount)
@@ -74,16 +73,15 @@ func PerlinInterpolation(c [2][2][2]Vec3, u, v, w float64) float64 {
 	return accum
 }
 
-func (n *PerlinNoise) Turbulence(p *Vec3, depth int) float64 {
+func (n *PerlinNoise) Turbulence(p Vec3, depth int) float64 {
 	accum := 0.0
 	tempP := NewVec3(p.X, p.Y, p.Z)
 	weight := 1.0
 
-	for i := 0; i < depth; i++ {
-		accum += weight * n.Noise(&tempP)
+	for range depth {
+		accum += weight * n.Noise(tempP)
 		weight *= 0.5
 		tempP.ScaleAssign(2.0)
 	}
-
 	return math.Abs(accum)
 }
